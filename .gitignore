@@ -1,0 +1,79 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Data (large files - download separately)
+data/
+*.csv
+*.parquet
+
+# Model checkpoints and logs (generated during training)
+checkpoints/
+logs/
+experiments/
+experiments_*/
+*.pt
+*.pth
+*.ckpt
+
+# TensorBoard
+runs/
+events.out.tfevents.*
+
+# Environment variables
+.env
+.env.local
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# Analysis outputs (regenerate as needed)
+analysis/notebooks/.ipynb_checkpoints/
+results/
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover

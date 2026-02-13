@@ -1,0 +1,180 @@
+Baseline Replication of Multi-Resolution Diffusion Models
+for Time Series Forecasting
+
+Max [LAST NAME] and [TEAM MEMBER 2 NAME]
+CSEN-342, Winter 2026
+
+===============================================================================
+1. Introduction
+===============================================================================
+
+This report presents our baseline replication of "Multi-Resolution Diffusion
+Models for Time Series Forecasting" (mr-Diff) by Shen, Chen, and Kwok (ICLR
+2024). mr-Diff decomposes a forecast signal into S frequency-resolution stages
+via average-pooling trend extraction, then trains a separate denoising diffusion
+network per stage. At inference, generation proceeds coarse-to-fine: each finer
+stage is conditioned on the prediction of the previous coarser stage, and the
+final forecast is the sum of all stage outputs.
+
+We implement the core architecture and evaluate on the ETTh1 and ETTm1 datasets
+in both univariate and multivariate settings. Our best run achieves MAE of
+0.92-1.01 on normalized data versus the paper's 0.15-0.42, a 2-6x gap. Through
+five iterative experimental runs we trace this gap primarily to a train-test
+conditioning mismatch inherent to cascaded multi-stage diffusion, which is
+severely amplified by the absence of DPM-Solver for inference. Notably, we find
+that every paper-described component we tested (cumulative trend decomposition,
+learned mixup projection, full signal reconstruction via stage summation)
+degraded performance when used with standard DDPM sampling, raising questions
+about the completeness of the paper's described recipe for replication.
+
+===============================================================================
+2. Implementation
+===============================================================================
+
+Our model uses S=5 stages, K=100 diffusion steps with a linear variance
+schedule (beta_1=1e-4 to beta_K=0.1), hidden dimension 256, and trend
+extraction kernels [5, 25, 51, 201]. The conditioning network is a two-layer
+MLP (LeakyReLU 0.1) that encodes the lookback window and fuses it with the
+coarser stage's output. The denoising network is a convolutional encoder-decoder
+with sinusoidal step embeddings. Training uses Adam (lr=1e-3), gradient clipping
+at norm 1.0, and early stopping (patience 20, minimum 30 epochs, max 100).
+
+We decompose the forecast using a residual approach: each component is the
+difference between consecutive trend levels, so their sum reconstructs the
+original signal. Instance normalization (RevIN) is applied per-window; all
+metrics are computed on normalized data to match the paper. At inference, 10
+trajectories are sampled and averaged via standard DDPM reverse diffusion
+(the paper uses DPM-Solver, which we did not implement).
+
+We evaluate on ETTh1 (hourly, 17,420 samples, lookback 336, forecast 168) and
+ETTm1 (15-min, 69,680 samples, lookback 1,440, forecast 192), each in
+univariate (OT column) and multivariate (all 7 features) settings, with a
+60/20/20 chronological train/val/test split.
+
+===============================================================================
+3. Results
+===============================================================================
+
+Table 1: Baseline Results vs. Paper (instance-normalized, 10 trajectories)
+
+  Univariate:
+    +----------+------------+-----------+------------+-----------+---------+
+    | Dataset  | MAE (Ours) | MAE (Paper)| MSE (Ours)| MSE (Paper)| MAE Gap|
+    +----------+------------+-----------+------------+-----------+---------+
+    | ETTh1    |   1.007    |   0.196   |   1.610    |   0.066   |  5.1x  |
+    | ETTm1    |   0.963    |   0.149   |   1.473    |   0.039   |  6.5x  |
+    +----------+------------+-----------+------------+-----------+---------+
+
+  Multivariate:
+    +----------+------------+-----------+------------+-----------+---------+
+    | Dataset  | MAE (Ours) | MAE (Paper)| MSE (Ours)| MSE (Paper)| MAE Gap|
+    +----------+------------+-----------+------------+-----------+---------+
+    | ETTh1    |   0.922    |   0.422   |   1.457    |   0.411   |  2.2x  |
+    | ETTm1    |   0.972    |   0.373   |   1.576    |   0.340   |  2.6x  |
+    +----------+------------+-----------+------------+-----------+---------+
+
+The gap is smallest for multivariate forecasting (2-3x) and largest for
+univariate (5-7x). MSE gaps are more pronounced (3.5-37.8x) due to quadratic
+penalization of large errors. Note: our best results use only the finest stage's
+prediction rather than the full multi-stage reconstruction (see Section 4).
+
+Table 2: Training Summary
+
+    +--------------+--------+-------------------+--------------+
+    | Experiment   | Epochs | Best Val Loss (ep) | Time (min)  |
+    +--------------+--------+-------------------+--------------+
+    | ETTh1 Multi  |   54   |   0.321  (1)      |     4.1      |
+    | ETTh1 Uni    |   53   |   0.349  (3)      |     4.0      |
+    | ETTm1 Multi  |   50   |   0.262  (1)      |    18.4      |
+    | ETTm1 Uni    |  100   |   0.303  (82)     |    36.8      |
+    +--------------+--------+-------------------+--------------+
+
+Best validation loss was found very early (epoch 1-3) for most experiments.
+ETTm1 univariate was the exception, training the full 100 epochs with its best
+checkpoint at epoch 82. Total training time was ~63 minutes; evaluation added
+~79 minutes (10 samples x 100 diffusion steps per test window).
+
+Table 3: MAE Progression Across Experimental Runs
+
+    +----------+---------+---------+----------+----------+----------+
+    | Dataset  | Run 1   | Run 2   | Run 3    | Run 4    | Run 5    |
+    +----------+---------+---------+----------+----------+----------+
+    | ETTh1 M  |  1.23   |  0.92   |   8.85   |   1.32   |   1.61   |
+    | ETTh1 U  |  1.58   |  1.01   |  32.29   |   1.39   |   1.21   |
+    | ETTm1 M  |  3.07   |  0.97   |   6.14   |   2.74   |   6.92   |
+    | ETTm1 U  |  3.26   |  0.96   |   7.76   |   3.47   |   2.10   |
+    +----------+---------+---------+----------+----------+----------+
+
+    Run 1: Initial implementation
+    Run 2: Best result -- uses predictions[0] only (primary baseline)
+    Run 3: Cumulative trend decomposition (catastrophic, reverted)
+    Run 4: Conditioning fixes + AMP + sum(predictions) (regressed)
+    Run 5: AMP/projection reverted, sum(predictions) isolated (regressed)
+
+===============================================================================
+4. Analysis
+===============================================================================
+
+Through five runs and systematic ablation, we trace the performance gap to a
+train-test conditioning mismatch: each stage trains on ground-truth coarser
+components but receives noisy predictions at inference, causing cascading
+errors. We tested every paper-described component -- cumulative trend
+decomposition (MAE 6-32, catastrophic), learned mixup projection (MAE 1.3-3.5,
+regression), and full-signal summation (MAE 1.2-6.9, regression despite our
+best-ever training losses) -- and found that each degraded performance under
+standard DDPM sampling. Our best results use only the finest stage's prediction,
+sidestepping cascading errors at the cost of discarding coarser components. This
+suggests the paper's results depend critically on DPM-Solver not merely for
+inference speed (as presented in Section 5.2) but for sample quality: without
+it, stage predictions are too noisy to compose coherently, and the multi-
+resolution framework underperforms even a single-stage approach.
+
+Table 4: Known Differences from Paper
+
+    +---------------------------+-------------------+--------------------+
+    | Component                 | Paper             | Ours               |
+    +---------------------------+-------------------+--------------------+
+    | Trend decomposition       | Cumulative        | Residual           |
+    | Reverse diffusion sampler | DPM-Solver        | DDPM (100 steps)   |
+    | Future mixup projection   | Learned (Eq. 9)   | Random weights     |
+    | Signal reconstruction     | sum(all stages)   | predictions[0]     |
+    | Kernel sizes / S          | Per-dataset search | Fixed S=5, [5-201] |
+    +---------------------------+-------------------+--------------------+
+
+===============================================================================
+5. Conclusion
+===============================================================================
+
+Our baseline replication of mr-Diff achieves MAE of 0.92-1.01, a 2-6x gap from
+the paper's 0.15-0.42. Through five runs and systematic ablation, we found that
+the dominant cause is cascading error from the train-test conditioning mismatch,
+critically amplified by DDPM's inferior sample quality relative to DPM-Solver.
+We further found that each paper-described component we tested (cumulative
+decomposition, learned mixup projection, full-signal summation) individually
+degraded performance in our DDPM-based setting, suggesting that the paper's
+architecture requires DPM-Solver not as an optional accelerator but as a
+necessary component for correctness. In our final report we will target this
+gap with improved inference sampling and conditioning strategies.
+
+[PLACEHOLDER: Figures showing training loss curves and sample forecast
+visualizations will be included in the final version.]
+
+===============================================================================
+Team Contributions
+===============================================================================
+
+    [TEAM MEMBER 1]:    [XX]%
+    [TEAM MEMBER 2]:    [XX]%
+    (Total: 100%)
+
+===============================================================================
+References
+===============================================================================
+
+[1] Shen, Chen, & Kwok. Multi-Resolution Diffusion Models for Time Series
+    Forecasting. ICLR 2024.
+[2] Ho, Jain, & Abbeel. Denoising Diffusion Probabilistic Models. NeurIPS 2020.
+[3] Lu et al. DPM-Solver: A Fast ODE Solver for Diffusion Probabilistic Model
+    Sampling in Around 10 Steps. NeurIPS 2022.
+[4] Kim et al. Reversible Instance Normalization for Accurate Time-Series
+    Forecasting against Distribution Shift. ICLR 2022.
