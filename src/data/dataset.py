@@ -250,5 +250,11 @@ def create_dataloaders(
         pin_memory=True,
     )
 
-    # Return None for scaler (per-window normalization doesn't need global scaler)
-    return train_loader, val_loader, test_loader, None
+    # Compute global training statistics for evaluation metrics
+    # Papers report metrics in globally-standardized space, not RevIN space
+    from .preprocessing import StandardScaler
+    scaler = StandardScaler()
+    train_data_tensor = torch.tensor(train_dataset.split_data, dtype=torch.float32)
+    scaler.fit(train_data_tensor)
+
+    return train_loader, val_loader, test_loader, scaler

@@ -1,16 +1,16 @@
 """Denoising network for mr-Diff.
 
-Implements the encoder-decoder architecture for noise prediction.
+Implements the encoder-decoder architecture with residual and skip connections.
 """
 
-from typing import Optional
+from typing import List, Optional
 
 import torch
 import torch.nn as nn
 
 
 class ConvBlock(nn.Module):
-    """Convolutional block: Conv1d -> BatchNorm -> LeakyReLU -> Dropout."""
+    """Residual convolutional block: Conv1d -> GroupNorm -> LeakyReLU -> Dropout + skip."""
 
     def __init__(
         self,
@@ -20,15 +20,6 @@ class ConvBlock(nn.Module):
         dropout: float = 0.1,
         stride: int = 1,
     ):
-        """Initialize the conv block.
-
-        Args:
-            in_channels: Number of input channels.
-            out_channels: Number of output channels.
-            kernel_size: Convolution kernel size.
-            dropout: Dropout probability.
-            stride: Convolution stride.
-        """
         super().__init__()
 
         padding = kernel_size // 2  # Same padding
@@ -40,12 +31,15 @@ class ConvBlock(nn.Module):
             padding=padding,
             stride=stride,
         )
-        self.norm = nn.BatchNorm1d(out_channels)
+        self.norm = nn.GroupNorm(min(32, out_channels), out_channels)
         self.activation = nn.LeakyReLU(0.1)
         self.dropout = nn.Dropout(dropout)
 
+        # Residual projection if dimensions change
+        self.use_residual = (in_channels == out_channels and stride == 1)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward pass.
+        """Forward pass with residual connection.
 
         Args:
             x: Input tensor [B, C, T].
@@ -53,18 +47,20 @@ class ConvBlock(nn.Module):
         Returns:
             Output tensor [B, C_out, T].
         """
+        residual = x
         x = self.conv(x)
         x = self.norm(x)
         x = self.activation(x)
         x = self.dropout(x)
+
+        if self.use_residual:
+            x = x + residual
+
         return x
 
 
 class Encoder(nn.Module):
-    """Encoder network for denoising.
-
-    Takes noisy input and diffusion step embedding to produce latent representation.
-    """
+    """Encoder with skip connections for U-Net style architecture."""
 
     def __init__(
         self,
@@ -75,16 +71,6 @@ class Encoder(nn.Module):
         kernel_size: int = 3,
         dropout: float = 0.1,
     ):
-        """Initialize the encoder.
-
-        Args:
-            input_dim: Number of input features D.
-            hidden_dim: Hidden dimension.
-            step_embed_dim: Dimension of diffusion step embedding.
-            num_layers: Number of conv layers.
-            kernel_size: Convolution kernel size.
-            dropout: Dropout probability.
-        """
         super().__init__()
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
@@ -111,48 +97,47 @@ class Encoder(nn.Module):
         self,
         y_noisy: torch.Tensor,
         step_embed: torch.Tensor,
-    ) -> torch.Tensor:
-        """Encode noisy input.
+    ) -> tuple:
+        """Encode noisy input, returning latent + skip features.
 
         Args:
             y_noisy: Noisy data Y^k [B, T, D].
             step_embed: Diffusion step embedding p^k [B, step_embed_dim].
 
         Returns:
-            Latent representation z^k [B, T, hidden_dim].
+            Tuple of (z [B, T, hidden_dim], skips list of [B, hidden_dim, T]).
         """
         batch_size, seq_len, _ = y_noisy.shape
 
-        # Expand step embedding to sequence length: [B, step_embed_dim] -> [B, T, step_embed_dim]
+        # Expand step embedding to sequence length
         step_embed_expanded = step_embed.unsqueeze(1).expand(-1, seq_len, -1)
 
         # Concatenate: [B, T, D + step_embed_dim]
         x = torch.cat([y_noisy, step_embed_expanded], dim=-1)
 
-        # Input projection: [B, T, D + step_embed_dim] -> [B, T, hidden_dim]
+        # Input projection: [B, T, hidden_dim]
         x = self.input_proj(x)
 
-        # Convert to conv format: [B, T, hidden_dim] -> [B, hidden_dim, T]
+        # Convert to conv format: [B, hidden_dim, T]
         x = x.transpose(1, 2)
 
-        # Apply conv blocks
+        # Apply conv blocks, saving intermediates for skip connections
+        skips = []
         for layer in self.layers:
             x = layer(x)
+            skips.append(x)  # Save after each layer
 
-        # Convert back: [B, hidden_dim, T] -> [B, T, hidden_dim]
+        # Convert back: [B, T, hidden_dim]
         x = x.transpose(1, 2)
 
         # Output projection
         z = self.output_proj(x)
 
-        return z
+        return z, skips
 
 
 class Decoder(nn.Module):
-    """Decoder network for denoising.
-
-    Takes latent representation and conditioning to predict clean data.
-    """
+    """Decoder with skip connections from encoder."""
 
     def __init__(
         self,
@@ -163,16 +148,6 @@ class Decoder(nn.Module):
         kernel_size: int = 3,
         dropout: float = 0.1,
     ):
-        """Initialize the decoder.
-
-        Args:
-            output_dim: Number of output features D.
-            hidden_dim: Hidden dimension.
-            cond_dim: Dimension of conditioning signal.
-            num_layers: Number of conv layers.
-            kernel_size: Convolution kernel size.
-            dropout: Dropout probability.
-        """
         super().__init__()
         self.output_dim = output_dim
         self.hidden_dim = hidden_dim
@@ -180,9 +155,12 @@ class Decoder(nn.Module):
         # Conditioning fusion: hidden_dim + cond_dim -> hidden_dim
         self.cond_fusion = nn.Linear(hidden_dim + cond_dim, hidden_dim)
 
-        # Stack of conv blocks
+        # Stack of conv blocks — input is 2*hidden_dim due to skip connections
         self.layers = nn.ModuleList()
+        self.skip_projs = nn.ModuleList()
         for i in range(num_layers):
+            # Project concatenated [x, skip] back to hidden_dim
+            self.skip_projs.append(nn.Linear(hidden_dim * 2, hidden_dim))
             self.layers.append(
                 ConvBlock(
                     in_channels=hidden_dim,
@@ -199,12 +177,14 @@ class Decoder(nn.Module):
         self,
         z: torch.Tensor,
         conditioning: torch.Tensor,
+        encoder_skips: List[torch.Tensor] = None,
     ) -> torch.Tensor:
-        """Decode latent representation.
+        """Decode with skip connections from encoder.
 
         Args:
             z: Latent representation z^k [B, T, hidden_dim].
             conditioning: Conditioning signal c_s [B, T, cond_dim].
+            encoder_skips: List of encoder features [B, hidden_dim, T] (reversed order).
 
         Returns:
             Predicted clean data Y^θ_s [B, T, D].
@@ -213,27 +193,36 @@ class Decoder(nn.Module):
         x = torch.cat([z, conditioning], dim=-1)
         x = self.cond_fusion(x)
 
-        # Convert to conv format: [B, T, hidden_dim] -> [B, hidden_dim, T]
+        # Convert to conv format: [B, hidden_dim, T]
         x = x.transpose(1, 2)
 
-        # Apply conv blocks
-        for layer in self.layers:
+        # Apply conv blocks with skip connections
+        # Reverse encoder skips so deepest encoder layer matches first decoder layer
+        if encoder_skips is not None:
+            reversed_skips = list(reversed(encoder_skips))
+        else:
+            reversed_skips = [None] * len(self.layers)
+
+        for i, (layer, skip_proj) in enumerate(zip(self.layers, self.skip_projs)):
+            if reversed_skips[i] is not None:
+                # Concatenate skip and project: [B, 2*hidden_dim, T] -> [B, hidden_dim, T]
+                combined = torch.cat([x, reversed_skips[i]], dim=1)  # Channel dim
+                # Transpose to [B, T, 2*hidden_dim] for linear, then back
+                combined = combined.transpose(1, 2)
+                x = skip_proj(combined).transpose(1, 2)
             x = layer(x)
 
-        # Convert back: [B, hidden_dim, T] -> [B, T, hidden_dim]
+        # Convert back: [B, T, hidden_dim]
         x = x.transpose(1, 2)
 
-        # Output projection: [B, T, hidden_dim] -> [B, T, D]
+        # Output projection: [B, T, D]
         y_pred = self.output_proj(x)
 
         return y_pred
 
 
 class DenoisingNetwork(nn.Module):
-    """Full denoising network combining encoder and decoder.
-
-    Predicts clean data from noisy input given conditioning.
-    """
+    """Full denoising network with encoder-decoder skip connections."""
 
     def __init__(
         self,
@@ -246,18 +235,6 @@ class DenoisingNetwork(nn.Module):
         kernel_size: int = 3,
         dropout: float = 0.1,
     ):
-        """Initialize the denoising network.
-
-        Args:
-            input_dim: Number of input/output features D.
-            hidden_dim: Hidden dimension.
-            step_embed_dim: Dimension of diffusion step embedding.
-            cond_dim: Dimension of conditioning signal.
-            num_encoder_layers: Number of encoder layers.
-            num_decoder_layers: Number of decoder layers.
-            kernel_size: Convolution kernel size.
-            dropout: Dropout probability.
-        """
         super().__init__()
 
         self.encoder = Encoder(
@@ -294,11 +271,11 @@ class DenoisingNetwork(nn.Module):
         Returns:
             Predicted clean data Y^θ_s [B, T, D].
         """
-        # Encode
-        z = self.encoder(y_noisy, step_embed)
+        # Encode — get latent + skip features
+        z, encoder_skips = self.encoder(y_noisy, step_embed)
 
-        # Decode with conditioning
-        y_pred = self.decoder(z, conditioning)
+        # Decode with skip connections
+        y_pred = self.decoder(z, conditioning, encoder_skips)
 
         return y_pred
 
@@ -318,19 +295,6 @@ class MultiStageDenoisingNetwork(nn.Module):
         kernel_size: int = 3,
         dropout: float = 0.1,
     ):
-        """Initialize denoising networks for all stages.
-
-        Args:
-            num_stages: Number of resolution stages S.
-            input_dim: Number of input features.
-            hidden_dim: Hidden dimension.
-            step_embed_dim: Step embedding dimension.
-            cond_dim: Conditioning dimension.
-            num_encoder_layers: Number of encoder layers.
-            num_decoder_layers: Number of decoder layers.
-            kernel_size: Convolution kernel size.
-            dropout: Dropout probability.
-        """
         super().__init__()
         self.num_stages = num_stages
 
@@ -356,15 +320,5 @@ class MultiStageDenoisingNetwork(nn.Module):
         step_embed: torch.Tensor,
         conditioning: torch.Tensor,
     ) -> torch.Tensor:
-        """Apply denoising for a specific stage.
-
-        Args:
-            stage: Stage index (0 to S-1).
-            y_noisy: Noisy data.
-            step_embed: Step embedding.
-            conditioning: Conditioning signal.
-
-        Returns:
-            Predicted clean data for the stage.
-        """
+        """Apply denoising for a specific stage."""
         return self.networks[stage](y_noisy, step_embed, conditioning)

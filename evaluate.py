@@ -82,6 +82,32 @@ def main():
         default=None,
         help="Lookback window length (overrides config)",
     )
+    parser.add_argument(
+        "--solver",
+        type=str,
+        default="ddpm",
+        choices=["ddpm", "dpm_solver_pp"],
+        help="Sampling solver: ddpm (100-step) or dpm_solver_pp (fast ODE)",
+    )
+    parser.add_argument(
+        "--solver-steps",
+        type=int,
+        default=20,
+        help="Number of DPM-Solver++ steps (ignored for DDPM)",
+    )
+    parser.add_argument(
+        "--aggregation",
+        type=str,
+        default="sum",
+        choices=["first", "sum"],
+        help="Multi-resolution aggregation: first (predictions[0]) or sum (all stages)",
+    )
+    parser.add_argument(
+        "--epsilon-scale",
+        type=float,
+        default=1.0,
+        help="Epsilon scaling for x0 predictions (default: 1.0, try 0.98 to reduce exposure bias)",
+    )
 
     args = parser.parse_args()
 
@@ -137,8 +163,20 @@ def main():
 
     print(f"Model loaded from {args.checkpoint}")
 
+    # Build sample kwargs for solver selection
+    sample_kwargs = {
+        "solver": args.solver,
+        "solver_steps": args.solver_steps,
+        "aggregation": args.aggregation,
+        "epsilon_scale": args.epsilon_scale,
+    }
+
+    solver_desc = args.solver
+    if args.solver == "dpm_solver_pp":
+        solver_desc = f"DPM-Solver++ ({args.solver_steps} steps, agg={args.aggregation})"
+
     # Evaluate
-    print(f"\nEvaluating with {args.num_samples} samples...")
+    print(f"\nEvaluating with {args.num_samples} samples, solver={solver_desc}...")
     results = evaluate_model(
         model=model,
         dataloader=test_loader,
@@ -146,6 +184,7 @@ def main():
         num_samples=args.num_samples,
         device=device,
         return_predictions=args.save_predictions or args.plot_samples > 0,
+        **sample_kwargs,
     )
 
     # Print results
@@ -161,6 +200,9 @@ def main():
         "univariate": data_config.get("univariate", False),
         "num_samples": args.num_samples,
         "checkpoint": args.checkpoint,
+        "solver": args.solver,
+        "solver_steps": args.solver_steps if args.solver == "dpm_solver_pp" else None,
+        "aggregation": args.aggregation,
         "mae": results["mae"],
         "mae_std": results["mae_std"],
         "mse": results["mse"],

@@ -231,7 +231,9 @@ class StandardScaler:
         if self.mean is None:
             raise RuntimeError("Scaler has not been fitted. Call fit() first.")
 
-        return (data - self.mean) / self.std
+        mean = self.mean.to(data.device)
+        std = self.std.to(data.device)
+        return (data - mean) / std
 
     def inverse_transform(self, data: torch.Tensor) -> torch.Tensor:
         """Inverse transform normalized data.

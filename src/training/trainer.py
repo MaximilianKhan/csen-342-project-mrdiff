@@ -71,11 +71,16 @@ class Trainer:
         self.checkpoint_dir = Path(checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-        # Optimizer
-        self.optimizer = torch.optim.Adam(
+        # Optimizer — AdamW decouples weight decay from gradient updates
+        self.optimizer = torch.optim.AdamW(
             model.parameters(),
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
+        )
+
+        # Cosine annealing LR schedule
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            self.optimizer, T_max=self.max_epochs,
         )
 
         # Mixed precision training -- DISABLED
@@ -115,6 +120,9 @@ class Trainer:
         for epoch in range(self.max_epochs):
             self.current_epoch = epoch
 
+            # Set epoch on model for scheduled sampling
+            self.model.current_epoch = epoch
+
             # Training epoch
             train_metrics = self._train_epoch()
 
@@ -151,6 +159,9 @@ class Trainer:
 
             if (epoch + 1) % self.save_every_n_epochs == 0:
                 self._save_checkpoint(f"epoch_{epoch + 1}.pt", val_metrics)
+
+            # Step LR scheduler
+            self.scheduler.step()
 
             # Early stopping (only after min_epochs)
             if epoch >= self.min_epochs - 1:

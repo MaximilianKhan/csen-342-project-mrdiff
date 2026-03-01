@@ -11,9 +11,9 @@ import torch.nn as nn
 
 
 class DiffusionSchedule:
-    """Linear variance schedule for diffusion process.
+    """Variance schedule for diffusion process.
 
-    Implements the schedule from β₁ to βK with precomputed α values.
+    Supports linear and cosine schedules with precomputed α values.
     """
 
     def __init__(
@@ -21,27 +21,44 @@ class DiffusionSchedule:
         num_steps: int = 100,
         beta_start: float = 1e-4,
         beta_end: float = 0.1,
+        schedule_type: str = "linear",
         device: torch.device = None,
     ):
         """Initialize the diffusion schedule.
 
         Args:
             num_steps: Number of diffusion steps K.
-            beta_start: Starting variance β₁.
-            beta_end: Ending variance βK.
+            beta_start: Starting variance β₁ (linear only).
+            beta_end: Ending variance βK (linear only).
+            schedule_type: "linear" or "cosine".
             device: Device to store tensors on.
         """
         self.num_steps = num_steps
         self.device = device or torch.device("cpu")
 
-        # Linear schedule: β_k from beta_start to beta_end
-        self.betas = torch.linspace(beta_start, beta_end, num_steps, device=self.device)
+        if schedule_type == "cosine":
+            # Cosine schedule (Nichol & Dhariwal, 2021)
+            # Gives smoother noise progression, better for fewer steps
+            s = 0.008
+            steps = torch.linspace(0, num_steps, num_steps + 1, device=self.device)
+            f = torch.cos(((steps / num_steps) + s) / (1 + s) * math.pi * 0.5) ** 2
+            alpha_bars = f / f[0]
+            # Clip and compute betas from alpha_bars
+            alpha_bars = alpha_bars[1:]  # Remove t=0
+            alpha_bars_prev = torch.cat([torch.tensor([1.0], device=self.device), alpha_bars[:-1]])
+            self.betas = (1 - alpha_bars / alpha_bars_prev).clamp(max=0.999)
+            self.alpha_bars = alpha_bars
+        else:
+            # Linear schedule: β_k from beta_start to beta_end
+            self.betas = torch.linspace(beta_start, beta_end, num_steps, device=self.device)
 
         # α_k = 1 - β_k
         self.alphas = 1.0 - self.betas
 
         # ᾱ_k = ∏_{s=1}^{k} α_s (cumulative product)
-        self.alpha_bars = torch.cumprod(self.alphas, dim=0)
+        # For cosine schedule, alpha_bars is already set above
+        if not hasattr(self, 'alpha_bars') or schedule_type != "cosine":
+            self.alpha_bars = torch.cumprod(self.alphas, dim=0)
 
         # Precompute useful quantities
         self.sqrt_alpha_bars = torch.sqrt(self.alpha_bars)

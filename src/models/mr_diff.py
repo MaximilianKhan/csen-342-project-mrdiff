@@ -13,6 +13,8 @@ from .denoising import MultiStageDenoisingNetwork
 from .diffusion import DiffusionSchedule, DiffusionStepEmbedding, forward_diffusion
 from ..data.preprocessing import TrendExtraction, InstanceNormalization
 
+from dpm_solver_pp import DPMSolverPP
+
 
 class MRDiff(nn.Module):
     """Multi-Resolution Diffusion Model for time series forecasting.
@@ -33,6 +35,7 @@ class MRDiff(nn.Module):
         kernel_sizes: List[int] = None,
         beta_start: float = 1e-4,
         beta_end: float = 0.1,
+        schedule_type: str = "linear",
         forecast_length: int = 168,
         lookback_length: int = 336,
         num_encoder_layers: int = 3,
@@ -84,6 +87,7 @@ class MRDiff(nn.Module):
             num_steps=diffusion_steps,
             beta_start=beta_start,
             beta_end=beta_end,
+            schedule_type=schedule_type,
         )
 
         # Diffusion step embedding
@@ -99,6 +103,7 @@ class MRDiff(nn.Module):
             hidden_dim=hidden_dim,
             forecast_length=forecast_length,
             lookback_length=lookback_length,
+            dropout=dropout,
         )
 
         # Denoising networks (one per stage)
@@ -113,11 +118,38 @@ class MRDiff(nn.Module):
             dropout=dropout,
         )
 
+        # Direct prediction backbone (DLinear-style)
+        # Provides a strong initial forecast; diffusion refines the residual
+        self.direct_trend_proj = nn.Linear(lookback_length, forecast_length)
+        self.direct_resid_proj = nn.Linear(lookback_length, forecast_length)
+        self.direct_kernel_size = 25
+
     def to(self, device: torch.device) -> "MRDiff":
         """Move model to device."""
         super().to(device)
         self.schedule = self.schedule.to(device)
         return self
+
+    def direct_predict(self, lookback: torch.Tensor) -> torch.Tensor:
+        """Direct DLinear-style forecast from lookback (no diffusion).
+
+        Args:
+            lookback: Historical data [B, H, D].
+
+        Returns:
+            Direct forecast [B, T, D].
+        """
+        # [B, H, D] -> [B, D, H]
+        x = lookback.transpose(1, 2)
+        # Trend extraction
+        ks = self.direct_kernel_size
+        pad = ks // 2
+        x_padded = nn.functional.pad(x, (pad, pad), mode='replicate')
+        trend = nn.functional.avg_pool1d(x_padded, ks, stride=1)
+        resid = x - trend
+        # Project each to forecast length
+        out = self.direct_trend_proj(trend) + self.direct_resid_proj(resid)
+        return out.transpose(1, 2)  # [B, T, D]
 
     def decompose_target(self, target: torch.Tensor) -> List[torch.Tensor]:
         """Decompose target into multi-resolution components.
@@ -149,14 +181,21 @@ class MRDiff(nn.Module):
         batch_size = lookback.size(0)
         device = lookback.device
 
-        # Instance normalize
-        forecast_norm, mean, std = self.instance_norm(forecast, return_stats=True)
+        # Direct prediction + residual diffusion
+        direct_pred = self.direct_predict(lookback)
+        direct_loss = nn.functional.mse_loss(direct_pred, forecast)
+        residual = forecast - direct_pred.detach()  # Detach so diffusion doesn't backprop through direct
 
-        # Decompose into multi-resolution components
-        components = self.decompose_target(forecast_norm)
+        # Decompose RESIDUAL into multi-resolution components
+        components = self.decompose_target(residual)
 
-        total_loss = torch.tensor(0.0, device=device)
+        total_loss = direct_loss  # Start with direct prediction loss
         stage_losses = {}
+        stage_predictions = {}  # For scheduled sampling
+
+        # Scheduled sampling probability — ramp from 0 to 0.5 over 50 epochs
+        epoch = getattr(self, 'current_epoch', 0)
+        ss_prob = min(epoch / 50.0, 0.5)
 
         # Process each stage from coarsest to finest
         for s in range(self.num_stages - 1, -1, -1):
@@ -171,8 +210,19 @@ class MRDiff(nn.Module):
             # Get diffusion step embedding
             step_embed = self.step_embedding(k)
 
-            # Get coarser trend (None for coarsest stage)
-            coarse_trend = components[s + 1] if s < self.num_stages - 1 else None
+            # Get coarser trend with scheduled sampling
+            if s < self.num_stages - 1:
+                use_model_pred = (
+                    ss_prob > 0
+                    and torch.rand(1).item() < ss_prob
+                    and (s + 1) in stage_predictions
+                )
+                if use_model_pred:
+                    coarse_trend = stage_predictions[s + 1].detach()
+                else:
+                    coarse_trend = components[s + 1]
+            else:
+                coarse_trend = None
 
             # Get conditioning
             conditioning = self.conditioning(
@@ -184,18 +234,33 @@ class MRDiff(nn.Module):
                 training=True,
             )
 
-            # Predict clean data
-            y_pred = self.denoising(
+            # Predict noise (epsilon prediction)
+            eps_pred = self.denoising(
                 stage=s,
                 y_noisy=yk_s,
                 step_embed=step_embed,
                 conditioning=conditioning,
             )
 
-            # Compute loss: L_s = E[||Y^0_s - Y^θ_s||²]
-            loss_s = nn.functional.mse_loss(y_pred, y0_s)
-            stage_losses[s] = loss_s
+            # Recover x0 from epsilon prediction for scheduled sampling
+            alpha_bar_k = self.schedule.alpha_bars[k].view(-1, 1, 1)
+            x0_pred = (yk_s - torch.sqrt(1 - alpha_bar_k) * eps_pred) / torch.sqrt(alpha_bar_k).clamp(min=1e-5)
+            stage_predictions[s] = x0_pred.detach()
 
+            # Compute loss: predict noise (uniform difficulty across k)
+            loss_s = nn.functional.mse_loss(eps_pred, noise)
+
+            # Frequency-domain auxiliary loss — match spectral structure
+            fft_pred = torch.fft.rfft(x0_pred, dim=1).abs()
+            fft_target = torch.fft.rfft(y0_s, dim=1).abs()
+            freq_loss = nn.functional.mse_loss(fft_pred, fft_target)
+            loss_s = loss_s + 0.1 * freq_loss
+
+            # Stage weighting — coarser stages matter more (errors cascade)
+            stage_weight = (s + 1) / self.num_stages
+            loss_s = loss_s * stage_weight
+
+            stage_losses[s] = loss_s
             total_loss = total_loss + loss_s
 
         return total_loss, stage_losses
@@ -205,12 +270,23 @@ class MRDiff(nn.Module):
         self,
         lookback: torch.Tensor,
         num_samples: int = 1,
+        solver: str = "dpm_solver_pp",
+        solver_steps: int = 20,
+        aggregation: str = "sum",
+        epsilon_scale: float = 1.0,
     ) -> torch.Tensor:
         """Generate forecasts using reverse diffusion (Algorithm 2).
 
         Args:
             lookback: Historical data [B, H, D].
             num_samples: Number of forecast samples to generate.
+            solver: Sampling solver — "ddpm" (100-step) or "dpm_solver_pp" (fast ODE).
+            solver_steps: Number of DPM-Solver++ steps (ignored for DDPM).
+            aggregation: How to combine multi-resolution predictions:
+                "first" — use predictions[0] only (safe default for DDPM),
+                "sum" — sum all stages (paper's method, needs DPM-Solver++).
+            epsilon_scale: Scale factor for x0 predictions (default 1.0).
+                Values < 1.0 (e.g. 0.98) reduce exposure bias drift.
 
         Returns:
             Forecasts [B, num_samples, T, D] or [B, T, D] if num_samples=1.
@@ -221,80 +297,113 @@ class MRDiff(nn.Module):
         all_samples = []
 
         for _ in range(num_samples):
-            # Initialize predictions for all stages
             predictions = [None] * self.num_stages
 
             # Generate from coarsest to finest stage
             for s in range(self.num_stages - 1, -1, -1):
-                # Start from pure noise for the coarsest level
-                yk = torch.randn(
-                    batch_size, self.forecast_length, self.input_dim,
-                    device=device,
-                )
-
-                # Get coarser trend (use prediction from previous stage)
                 coarse_trend = predictions[s + 1] if s < self.num_stages - 1 else None
 
-                # Reverse diffusion process
-                for k in range(self.diffusion_steps - 1, -1, -1):
-                    k_tensor = torch.full((batch_size,), k, device=device, dtype=torch.long)
-
-                    # Get step embedding
-                    step_embed = self.step_embedding(k_tensor)
-
-                    # Get conditioning (no mixup during inference)
-                    conditioning = self.conditioning(
-                        stage=s,
-                        history=lookback,
-                        coarse_trend=coarse_trend,
-                        target=None,
-                        mixup_prob=0.0,
-                        training=False,
+                if solver == "dpm_solver_pp":
+                    predictions[s] = self._sample_stage_dpm(
+                        s, lookback, coarse_trend, batch_size, device, solver_steps,
+                        epsilon_scale,
+                    )
+                else:
+                    predictions[s] = self._sample_stage_ddpm(
+                        s, lookback, coarse_trend, batch_size, device,
+                        epsilon_scale,
                     )
 
-                    # Predict clean data
-                    y_pred = self.denoising(
-                        stage=s,
-                        y_noisy=yk,
-                        step_embed=step_embed,
-                        conditioning=conditioning,
-                    )
+            # Aggregate multi-resolution predictions
+            if aggregation == "sum":
+                forecast = sum(predictions)
+            else:
+                forecast = predictions[0]
 
-                    # DDPM update step
-                    if k > 0:
-                        alpha = self.schedule.alphas[k]
-                        alpha_bar = self.schedule.alpha_bars[k]
-                        alpha_bar_prev = self.schedule.alpha_bars[k - 1]
-                        beta = self.schedule.betas[k]
-
-                        # Posterior mean
-                        coef1 = beta * torch.sqrt(alpha_bar_prev) / (1 - alpha_bar)
-                        coef2 = (1 - alpha_bar_prev) * torch.sqrt(alpha) / (1 - alpha_bar)
-                        posterior_mean = coef1 * y_pred + coef2 * yk
-
-                        # Add noise
-                        noise = torch.randn_like(yk)
-                        posterior_var = self.schedule.posterior_variance[k]
-                        yk = posterior_mean + torch.sqrt(posterior_var) * noise
-                    else:
-                        yk = y_pred
-
-                predictions[s] = yk
-
-            # Return finest-stage prediction only.
-            # sum(predictions) is theoretically correct but produces worse
-            # results under DDPM sampling due to cascading coarse-stage errors.
-            # See Run 173919 analysis in README.
-            forecast = predictions[0]
             all_samples.append(forecast)
 
-        # Stack samples
         samples = torch.stack(all_samples, dim=1)  # [B, num_samples, T, D]
 
         if num_samples == 1:
             samples = samples.squeeze(1)  # [B, T, D]
 
+        # Add direct prediction baseline to diffusion residual
+        direct_pred = self.direct_predict(lookback)
+        if samples.dim() == 3:
+            samples = direct_pred + samples
+        else:
+            samples = direct_pred.unsqueeze(1) + samples
+
         return samples
+
+    def _sample_stage_ddpm(self, s, lookback, coarse_trend, batch_size, device,
+                           epsilon_scale=1.0):
+        """DDPM 100-step reverse diffusion for a single stage (epsilon prediction)."""
+        yk = torch.randn(
+            batch_size, self.forecast_length, self.input_dim, device=device,
+        )
+
+        for k in range(self.diffusion_steps - 1, -1, -1):
+            k_tensor = torch.full((batch_size,), k, device=device, dtype=torch.long)
+            step_embed = self.step_embedding(k_tensor)
+
+            conditioning = self.conditioning(
+                stage=s, history=lookback, coarse_trend=coarse_trend,
+                target=None, mixup_prob=0.0, training=False,
+            )
+
+            # Model predicts epsilon (noise)
+            eps_pred = self.denoising(
+                stage=s, y_noisy=yk, step_embed=step_embed,
+                conditioning=conditioning,
+            )
+
+            # Convert epsilon to x0
+            alpha_bar = self.schedule.alpha_bars[k]
+            x0_pred = (yk - torch.sqrt(1 - alpha_bar) * eps_pred) / torch.sqrt(alpha_bar).clamp(min=1e-5)
+            x0_pred = x0_pred * epsilon_scale
+
+            if k > 0:
+                alpha = self.schedule.alphas[k]
+                alpha_bar_prev = self.schedule.alpha_bars[k - 1]
+                beta = self.schedule.betas[k]
+
+                coef1 = beta * torch.sqrt(alpha_bar_prev) / (1 - alpha_bar)
+                coef2 = (1 - alpha_bar_prev) * torch.sqrt(alpha) / (1 - alpha_bar)
+                posterior_mean = coef1 * x0_pred + coef2 * yk
+
+                noise = torch.randn_like(yk)
+                posterior_var = self.schedule.posterior_variance[k]
+                yk = posterior_mean + torch.sqrt(posterior_var) * noise
+            else:
+                yk = x0_pred
+
+        return yk
+
+    def _sample_stage_dpm(self, s, lookback, coarse_trend, batch_size, device,
+                          solver_steps, epsilon_scale=1.0):
+        """DPM-Solver++ sampling for a single stage (epsilon prediction)."""
+        # Precompute conditioning (fixed across all diffusion steps)
+        conditioning = self.conditioning(
+            stage=s, history=lookback, coarse_trend=coarse_trend,
+            target=None, mixup_prob=0.0, training=False,
+        )
+
+        # Build model_fn closure: (y_noisy, k_tensor) -> x0_pred
+        def model_fn(yk, k_tensor):
+            step_embed = self.step_embedding(k_tensor)
+            eps_pred = self.denoising(
+                stage=s, y_noisy=yk, step_embed=step_embed,
+                conditioning=conditioning,
+            )
+            # Convert epsilon to x0
+            alpha_bar = self.schedule.alpha_bars[k_tensor[0]]
+            x0_pred = (yk - torch.sqrt(1 - alpha_bar) * eps_pred) / torch.sqrt(alpha_bar).clamp(min=1e-5)
+            return x0_pred * epsilon_scale
+
+        dpm_solver = DPMSolverPP(self.schedule, num_solver_steps=solver_steps)
+        shape = (batch_size, self.forecast_length, self.input_dim)
+        return dpm_solver.sample(model_fn, shape, device)
 
     def forward(
         self,
@@ -354,6 +463,7 @@ def create_model(config: dict) -> MRDiff:
         kernel_sizes=model_config.get("kernel_sizes", [5, 25, 51, 201]),
         beta_start=training_config.get("beta_start", 1e-4),
         beta_end=training_config.get("beta_end", 0.1),
+        schedule_type=training_config.get("schedule_type", "linear"),
         forecast_length=data_config.get("forecast_length", 168),
         lookback_length=data_config.get("lookback_length", 336),
         num_encoder_layers=model_config.get("num_encoder_layers", 3),

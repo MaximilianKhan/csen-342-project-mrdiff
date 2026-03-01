@@ -102,6 +102,7 @@ def evaluate_model(
     num_samples: int = 10,
     device: torch.device = None,
     return_predictions: bool = False,
+    **sample_kwargs,
 ) -> Dict[str, float]:
     """Evaluate model on a dataset.
 
@@ -112,6 +113,8 @@ def evaluate_model(
         num_samples: Number of random trajectories to average over.
         device: Device to run on.
         return_predictions: Whether to return all predictions.
+        **sample_kwargs: Extra kwargs passed to model.sample()
+            (e.g. solver, solver_steps, aggregation).
 
     Returns:
         Dictionary with evaluation metrics.
@@ -129,30 +132,40 @@ def evaluate_model(
     for batch in tqdm(dataloader, desc="Evaluating"):
         lookback = batch["lookback"].to(device, non_blocking=True)
         target = batch["forecast"].to(device, non_blocking=True)
+        norm_mean = batch["norm_mean"].to(device, non_blocking=True)  # [B, D]
+        norm_std = batch["norm_std"].to(device, non_blocking=True)    # [B, D]
 
         # Generate multiple samples and average
         samples = []
         for _ in range(num_samples):
-            pred = model.sample(lookback, num_samples=1)
+            pred = model.sample(lookback, num_samples=1, **sample_kwargs)
             samples.append(pred)
 
         # Average predictions
         pred_mean = torch.stack(samples).mean(dim=0)
 
-        # NOTE: We compute metrics on NORMALIZED data to match paper's Table 1
-        # The scaler is no longer used for inverse_transform here
-        # This gives metrics comparable to other time series forecasting papers
+        # Inverse RevIN: convert from per-window normalized to original scale
+        pred_orig = pred_mean * norm_std.unsqueeze(1) + norm_mean.unsqueeze(1)
+        target_orig = target * norm_std.unsqueeze(1) + norm_mean.unsqueeze(1)
 
-        # Compute metrics
-        mae = compute_mae(pred_mean, target, reduction="none")
-        mse = compute_mse(pred_mean, target, reduction="none")
+        # Apply global standardization (training set mean/std) for comparable metrics
+        if scaler is not None:
+            pred_eval = scaler.transform(pred_orig)
+            target_eval = scaler.transform(target_orig)
+        else:
+            pred_eval = pred_orig
+            target_eval = target_orig
+
+        # Compute metrics in globally-standardized space (matches paper convention)
+        mae = compute_mae(pred_eval, target_eval, reduction="none")
+        mse = compute_mse(pred_eval, target_eval, reduction="none")
 
         all_mae.append(mae.mean(dim=(1, 2)).cpu())  # Per-sample MAE
         all_mse.append(mse.mean(dim=(1, 2)).cpu())  # Per-sample MSE
 
         if return_predictions:
-            all_preds.append(pred_mean.cpu())
-            all_targets.append(target.cpu())
+            all_preds.append(pred_eval.cpu())
+            all_targets.append(target_eval.cpu())
 
     # Concatenate all batches
     all_mae = torch.cat(all_mae)

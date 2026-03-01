@@ -22,6 +22,9 @@ class ConditioningNetwork(nn.Module):
         hidden_dim: int = 256,
         forecast_length: int = 168,
         lookback_length: int = 336,
+        num_conv_layers: int = 3,
+        conv_kernel_size: int = 7,
+        dropout: float = 0.1,
     ):
         """Initialize the conditioning network.
 
@@ -30,6 +33,9 @@ class ConditioningNetwork(nn.Module):
             hidden_dim: Hidden dimension for embeddings.
             forecast_length: Length of forecast window T.
             lookback_length: Length of lookback window H.
+            num_conv_layers: Number of conv layers in history encoder.
+            conv_kernel_size: Kernel size for history convolutions.
+            dropout: Dropout probability.
         """
         super().__init__()
         self.input_dim = input_dim
@@ -37,13 +43,18 @@ class ConditioningNetwork(nn.Module):
         self.forecast_length = forecast_length
         self.lookback_length = lookback_length
 
-        # Linear mapping for historical data: Xs -> z_history
-        # Maps [B, H, D] -> [B, T, hidden_dim]
-        self.history_encoder = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.LeakyReLU(0.1),
-            nn.Linear(hidden_dim, hidden_dim),
-        )
+        # Temporal history encoder: captures sequential patterns via Conv1d
+        self.history_input = nn.Linear(input_dim, hidden_dim)
+        conv_layers = []
+        for _ in range(num_conv_layers):
+            padding = conv_kernel_size // 2
+            conv_layers.extend([
+                nn.Conv1d(hidden_dim, hidden_dim, kernel_size=conv_kernel_size, padding=padding),
+                nn.GroupNorm(min(32, hidden_dim), hidden_dim),
+                nn.LeakyReLU(0.1),
+                nn.Dropout(dropout),
+            ])
+        self.history_convs = nn.Sequential(*conv_layers)
 
         # Projection to match forecast length
         self.length_proj = nn.Linear(lookback_length, forecast_length)
@@ -51,10 +62,16 @@ class ConditioningNetwork(nn.Module):
         # Target projection dimension for future mixup
         self._target_proj_dim = (input_dim, hidden_dim)
 
-        # Conditioning fusion: combines z_mix with coarser trend Y^0_{s+1}
-        # Input: hidden_dim (from mixup) + input_dim (from coarser trend)
+        # Project coarse_trend from D -> hidden_dim for equal representation
+        self.coarse_proj = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.LeakyReLU(0.1),
+        )
+
+        # Conditioning fusion: combines z_mix with projected coarse trend
+        # Input: hidden_dim (from mixup) + hidden_dim (from projected coarse trend)
         self.fusion = nn.Sequential(
-            nn.Linear(hidden_dim + input_dim, hidden_dim),
+            nn.Linear(hidden_dim + hidden_dim, hidden_dim),
             nn.LeakyReLU(0.1),
             nn.Linear(hidden_dim, hidden_dim),
         )
@@ -81,12 +98,13 @@ class ConditioningNetwork(nn.Module):
         """
         batch_size = history.size(0)
 
-        # Encode history: [B, H, D] -> [B, H, hidden_dim]
-        z_history = self.history_encoder(history)
-
-        # Project to forecast length: [B, H, hidden_dim] -> [B, T, hidden_dim]
-        # Transpose for linear: [B, hidden_dim, H] -> [B, hidden_dim, T]
+        # Encode history with temporal convolutions
+        # [B, H, D] -> [B, H, hidden_dim]
+        z_history = self.history_input(history)
+        # Conv1d needs [B, C, T]: [B, hidden_dim, H]
         z_history = z_history.transpose(1, 2)
+        z_history = self.history_convs(z_history) + z_history  # Residual
+        # Project to forecast length: [B, hidden_dim, H] -> [B, hidden_dim, T]
         z_history = self.length_proj(z_history)
         z_history = z_history.transpose(1, 2)  # [B, T, hidden_dim]
 
@@ -98,13 +116,14 @@ class ConditioningNetwork(nn.Module):
 
         # Fuse with coarser trend if provided
         if coarse_trend is not None:
-            # Concatenate: [B, T, hidden_dim] + [B, T, D] -> [B, T, hidden_dim + D]
-            fused = torch.cat([z_mix, coarse_trend], dim=-1)
+            # Project coarse_trend: [B, T, D] -> [B, T, hidden_dim]
+            coarse_projected = self.coarse_proj(coarse_trend)
+            fused = torch.cat([z_mix, coarse_projected], dim=-1)
             conditioning = self.fusion(fused)
         else:
-            # For coarsest stage, use a zero tensor for trend
+            # For coarsest stage, use zeros at hidden_dim
             zero_trend = torch.zeros(
-                batch_size, self.forecast_length, self.input_dim,
+                batch_size, self.forecast_length, self.hidden_dim,
                 device=history.device, dtype=history.dtype
             )
             fused = torch.cat([z_mix, zero_trend], dim=-1)
@@ -163,6 +182,9 @@ class MultiStageConditioningNetwork(nn.Module):
         hidden_dim: int = 256,
         forecast_length: int = 168,
         lookback_length: int = 336,
+        num_conv_layers: int = 3,
+        conv_kernel_size: int = 7,
+        dropout: float = 0.1,
     ):
         """Initialize conditioning networks for all stages.
 
@@ -172,6 +194,9 @@ class MultiStageConditioningNetwork(nn.Module):
             hidden_dim: Hidden dimension.
             forecast_length: Length of forecast window.
             lookback_length: Length of lookback window.
+            num_conv_layers: Number of conv layers in history encoder.
+            conv_kernel_size: Kernel size for history convolutions.
+            dropout: Dropout probability.
         """
         super().__init__()
         self.num_stages = num_stages
@@ -183,6 +208,9 @@ class MultiStageConditioningNetwork(nn.Module):
                 hidden_dim=hidden_dim,
                 forecast_length=forecast_length,
                 lookback_length=lookback_length,
+                num_conv_layers=num_conv_layers,
+                conv_kernel_size=conv_kernel_size,
+                dropout=dropout,
             )
             for _ in range(num_stages)
         ])
