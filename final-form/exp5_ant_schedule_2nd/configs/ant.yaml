@@ -1,0 +1,69 @@
+# mr-Diff Configuration — ANT Adaptive Noise Schedule (Improvement 4)
+# Based on small.yaml. The only training differences are schedule_type and
+# ant_betas_path. The {dataset} placeholder in ant_betas_path is resolved
+# at runtime by create_model() using config['data']['dataset'], so a single
+# config file works for all four experiment variants without edits.
+#
+# PREREQUISITE: Run ant_schedule.py for both datasets before submitting the
+# training job (takes ~20 min total on the login node, no GPU needed):
+#
+#   python src/data/ant_schedule.py \
+#       --data-path data/ETDataset/ETTh1.csv \
+#       --num-steps 100 \
+#       --output data/ant_betas_ETTh1.pt
+#
+#   python src/data/ant_schedule.py \
+#       --data-path data/ETDataset/ETTm1.csv \
+#       --num-steps 100 \
+#       --output data/ant_betas_ETTm1.pt
+
+model:
+  num_stages: 3
+  diffusion_steps: 100
+  embedding_dim: 64
+  hidden_dim: 64
+  kernel_sizes: [25, 201]
+  dropout: 0.3
+  num_encoder_layers: 2
+  num_decoder_layers: 2
+
+data:
+  dataset: "ETTh1"
+  data_path: "data/ETDataset"
+  lookback_length: 336
+  forecast_length: 168
+  batch_size: 64
+  num_workers: 4
+  train_ratio: 0.6
+  val_ratio: 0.2
+  test_ratio: 0.2
+  univariate: false
+
+training:
+  learning_rate: 0.0005
+  weight_decay: 0.01
+  max_epochs: 100
+  min_epochs: 30
+  early_stopping_patience: 20
+  grad_clip_norm: 1.0
+  beta_start: 0.0001
+  beta_end: 0.1           # fallback if ant betas file is missing
+  schedule_type: ant
+  ant_betas_path: "data/ant_betas_{dataset}.pt"   # {dataset} resolved at runtime
+  mixup_prob: 0.5
+
+logging:
+  log_dir: "logs"
+  checkpoint_dir: "checkpoints"
+  log_every_n_steps: 100
+  save_every_n_epochs: 5
+  tensorboard: true
+  csv_logging: true
+
+evaluation:
+  num_samples: 10
+  metrics: ["mae", "mse"]
+
+experiment:
+  name: "mr_diff_ant"
+  seed: 42
