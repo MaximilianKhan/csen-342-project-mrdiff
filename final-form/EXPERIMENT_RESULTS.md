@@ -157,3 +157,142 @@
 **Verdict:** Contrastive loss is **rejected** overall due to multivariate regression, though ETTm1 Uni's improvement (0.1946) is noteworthy. Experiment 2 remains our best across all benchmarks.
 
 ---
+
+## Experiment 7: Multi-Granularity Guided Diffusion (MG-TSD)
+
+**Change:** Added a multi-granularity guidance loss to training. Computes 3 progressively smoothed versions of the target using average pooling, then adds a weighted MSE loss that guides the denoiser's x0 predictions: at high noise levels (large k), the loss pushes toward coarse structure; at low noise levels (small k), toward fine details. Loss weight: 0.05. Built on Experiment 2 codebase. Code isolated in `exp7_multi_granularity/`.
+
+**Training time:** ~91 min total (all 4 experiments ran to 98-100 epochs — no early stopping triggered)
+
+| Experiment | Baseline MAE | Exp 2 MAE | Exp 7 MAE | vs Exp 2 | vs Paper |
+|---|---|---|---|---|---|
+| ETTh1 Multi | 0.4744 | 0.4719 | 0.5653 | +19.8% | +34.6% |
+| ETTh1 Uni | 0.2535 | 0.2523 | 0.2558 | +1.4% | -24.8% |
+| ETTm1 Multi | 0.4204 | 0.4218 | 0.4819 | +14.3% | +30.2% |
+| ETTm1 Uni | 0.2011 | 0.1999 | **0.1913** | **-4.3%** | +27.5% |
+
+**Direct MAE vs Full MAE:** Diffusion cosmetic across all experiments (Direct ≈ Full).
+
+**What worked:** ETTm1 Uni improved to 0.1913 — our **new best** on that benchmark, beating Exp 6's 0.1946 and Exp 2's 0.1999. The multi-granularity guidance provides a curriculum-like training signal that helps the denoiser on univariate long-horizon data where the smoothed targets are genuinely informative intermediate representations.
+
+**What didn't work:** ETTh1 Multi regressed +19.8% and ETTm1 Multi regressed +14.3%. The guidance loss adds noise to multivariate training because the avg-pooling smoothing operates temporally but ignores cross-channel structure. For D=7, the "coarse" version of the target blurs meaningful inter-variable dynamics. The models also ran to 100 epochs without early stopping, suggesting the guidance loss altered the loss landscape enough that val loss kept slowly decreasing while test MAE worsened — a classic case of optimizing a proxy (guided diffusion loss) that diverges from the true metric (forecast MAE).
+
+**Why ETTm1 Uni benefits:** With D=1, the multi-granularity targets are clean temporal smoothings of a single variable. The coarse→fine guidance gives the denoiser a meaningful trajectory from trend to detail, and with H=192 there's enough temporal structure for this to help. Multivariate (D=7) doesn't have this property — smoothing 7 channels independently produces a poor "coarse" target.
+
+**Verdict:** Multi-granularity guidance is **rejected** overall due to multivariate regression, though ETTm1 Uni's 0.1913 is our new best on that benchmark.
+
+---
+
+## Experiment 8: Channel-Aware Denoising Architecture
+
+**Change:** Replaced the shared Conv1d encoder in the denoising network with a `ChannelIndependentEncoder`: each of the D=7 variables gets its own temporal Conv1d processing, followed by cross-channel MultiheadAttention to mix information across variables. For univariate (D=1), falls back to the standard encoder. Built on Experiment 2 codebase. Code isolated in `exp8_channel_aware/`.
+
+**Training time:** ~89.5 min total (ETTh1 ~10 min, ETTm1 ~79 min; epochs ranged 66-100)
+
+| Experiment | Baseline MAE | Exp 2 MAE | Exp 8 MAE | vs Exp 2 | vs Paper |
+|---|---|---|---|---|---|
+| ETTh1 Multi | 0.4744 | 0.4719 | 0.9313 | **+97.3%** | +121.7% |
+| ETTh1 Uni | 0.2535 | 0.2523 | 0.2552 | +1.1% | -24.9% |
+| ETTm1 Multi | 0.4204 | 0.4218 | 0.9136 | **+116.6%** | +147.0% |
+| ETTm1 Uni | 0.2011 | 0.1999 | **0.1928** | **-3.6%** | +28.5% |
+
+**Direct MAE vs Full MAE:** Diffusion cosmetic across all experiments (Direct ≈ Full). ETTm1 Uni: 0.1926 direct vs 0.1928 full.
+
+**What worked:** ETTm1 Uni improved to 0.1928 — a solid gain over Exp 2's 0.1999 (-3.6%), though not quite matching Exp 6's best of 0.1946. The standard encoder fallback for D=1 means this univariate gain comes from other cumulative effects (Exp 1+2), not the channel-aware architecture itself.
+
+**What catastrophically failed:** Multivariate performance nearly doubled in error (+97% ETTh1, +117% ETTm1). The per-channel encoder with cross-channel attention massively overparameterized the denoising path for our small datasets. With D=7 channels each getting independent Conv1d stacks plus attention overhead, the denoiser has far more capacity than it can usefully fill with ~8K-10K training samples.
+
+**Why:** The channel-independent + attention architecture assumes there's enough data to learn per-variable temporal patterns AND cross-variable correlations. With ETT's small training sets, the per-channel encoders overfit to noise in each variable independently, and the cross-channel attention learns spurious correlations. The shared Conv1d in the baseline acts as implicit regularization — forcing all channels through the same kernels prevents overfitting to per-channel noise. This is a classic case of architecture complexity exceeding data capacity.
+
+**Verdict:** Channel-aware denoising is **rejected**. The architecture is sound in principle but catastrophically wrong for our data regime. Experiment 2 remains our best across all benchmarks.
+
+---
+
+## Experiment 10: Direct x0-Prediction with Trend/Seasonality Decomposition
+
+**Change:** Switched from epsilon-prediction to direct x0-prediction with an explicit decomposition head in the denoiser. The decoder outputs separate trend (learned moving average kernel) and seasonality (top-K Fourier basis, K=5) components, summed to form x0. Training loss is MSE directly on x0 rather than on predicted noise. The FFT auxiliary loss is now coherent — applied to the model's actual output instead of a noisy x0 recovered from epsilon. Built on Experiment 2 codebase. Code isolated in `exp10_x0_decomposition/`.
+
+**Training time:** ~55.1 min total (51-58 epochs, early stopping triggered on all — fastest training of any experiment)
+
+| Experiment | Baseline MAE | Exp 2 MAE | Exp 10 MAE | vs Exp 2 | vs Paper |
+|---|---|---|---|---|---|
+| ETTh1 Multi | 0.4744 | 0.4719 | 0.4842 | +2.6% | +15.3% |
+| ETTh1 Uni | 0.2535 | 0.2523 | **0.2508** | **-0.6%** | **-26.2%** |
+| ETTm1 Multi | 0.4204 | 0.4218 | 0.4194 | -0.6% | +13.4% |
+| ETTm1 Uni | 0.2011 | 0.1999 | 0.1969 | -1.5% | +31.3% |
+
+**Direct MAE vs Full MAE:** On ETTh1 Uni, diffusion **actively contributed** for the first time: Direct 0.2540 → Full 0.2508 (-1.3%). Elsewhere, diffusion was neutral-to-slightly-negative.
+
+**What worked:** This is the most balanced result across all experiments:
+- ETTh1 Uni hit **0.2508** — our new best, beating Exp 2's 0.2523 and extending our lead over the paper (-26.2%).
+- ETTm1 Multi at 0.4194 essentially matched Exp 2 (-0.6%) — the first experiment since baseline that didn't regress multivariate ETTm1.
+- ETTm1 Uni at 0.1969 improved over Exp 2's 0.1999 (-1.5%).
+- **Diffusion is no longer purely cosmetic on ETTh1 Uni.** The x0-prediction parameterization with decomposition gives the denoiser a structured output space (trend + seasonality) that it can meaningfully learn, rather than predicting arbitrary noise vectors.
+- Training converged faster (51-58 epochs vs 50-100 for other experiments), suggesting the direct x0 loss landscape is smoother.
+
+**What didn't work:** ETTh1 Multi regressed slightly (+2.6%), and on 3 of 4 benchmarks diffusion still hurt slightly (Full > Direct). The decomposition heads add inductive bias that helps univariate seasonal data but may constrain multivariate representations.
+
+**Why x0-prediction + decomposition helps:** Epsilon-prediction asks the denoiser to predict arbitrary noise — there's no structure in the target. Direct x0-prediction with trend/seasonality decomposition gives the denoiser strong inductive bias matching the actual data structure. The FFT loss is now applied to the model's direct output rather than a noisy derived quantity, creating a coherent training signal. For univariate data with clear seasonal patterns, this is exactly the right prior.
+
+**Verdict:** x0-prediction with decomposition shows the **most promising direction** of all experiments. First time diffusion actively contributed (ETTh1 Uni). Most balanced across benchmarks. New best on ETTh1 Uni (0.2508). However, the gains are modest and multivariate still doesn't improve meaningfully.
+
+---
+
+## Experiment 9: Patch + Attention History Encoder (PatchTST-style)
+
+**Change:** Replaced the 3-layer Conv1d history encoder in `ConditioningNetwork` with a PatchTST-style transformer: the lookback window is divided into non-overlapping patches (patch_size=24), each projected to hidden_dim with learnable positional embeddings, then processed by a 2-layer TransformerEncoder (4 heads, GELU activation). This gives the conditioning network global receptive field over the entire lookback window, vs the Conv1d's ~21-timestep effective receptive field. Built on Experiment 2 codebase. Code isolated in `exp9_patch_attention/`.
+
+**Training time:** ~94 min total (66-100 epochs; transformer encoder is slower per epoch)
+
+| Experiment | Baseline MAE | Exp 2 MAE | Exp 9 MAE | vs Exp 2 | vs Paper |
+|---|---|---|---|---|---|
+| ETTh1 Multi | 0.4744 | 0.4719 | 0.5388 | +14.2% | +28.3% |
+| ETTh1 Uni | 0.2535 | 0.2523 | 0.2541 | +0.7% | -25.3% |
+| ETTm1 Multi | 0.4204 | 0.4218 | 0.4900 | +16.2% | +32.4% |
+| ETTm1 Uni | 0.2011 | 0.1999 | 0.1984 | -0.8% | +32.3% |
+
+**Direct MAE vs Full MAE:** Diffusion cosmetic across all experiments (Direct ≈ Full).
+
+**What marginally worked:** ETTm1 Uni improved slightly to 0.1984 (-0.8% vs Exp 2). The global receptive field from self-attention over 60 patches (1440/24) can in theory capture long-range seasonality (daily cycles at 96 timesteps) that the Conv1d misses.
+
+**What didn't work:** ETTh1 Multi (+14.2%) and ETTm1 Multi (+16.2%) regressed significantly. ETTh1 Uni was essentially flat. The patch+attention encoder adds parameters and compute overhead (94 min vs ~35 min baseline) with no multivariate benefit.
+
+**Why:** The PatchTST architecture was designed for standalone forecasting where the encoder IS the model. In our architecture, the history encoder feeds into a conditioning network that then informs the diffusion denoiser — it's an intermediate representation, not a final prediction. The Conv1d encoder produces smooth, local features that the downstream denoiser can work with. The transformer encoder produces sharper, more complex representations that the small denoiser (843K params) can't effectively exploit. Additionally, for ETTh1 (L=336, only 14 patches), self-attention over 14 tokens provides minimal benefit over convolution. The overhead is highest on ETTm1 (60 patches), where the attention computation dominates training time without proportional benefit.
+
+**Why multivariate suffers:** The patch embedding treats all D channels as a flat input per patch. With D=7, each patch token mixes all variables before attention — the transformer can't learn per-variable temporal patterns. This is the inverse of Exp 8's problem: Exp 8 split channels too aggressively; Exp 9 conflates them too early. Neither extreme works.
+
+**Verdict:** Patch+attention conditioning is **rejected**. The Conv1d encoder is the right choice for our conditioning architecture — it's lightweight, provides appropriate local features, and doesn't overwhelm the downstream denoiser.
+
+---
+
+## Summary: Full Campaign Results (Experiments 1-10)
+
+| Exp | Improvement | ETTh1 Multi | ETTh1 Uni | ETTm1 Multi | ETTm1 Uni | Verdict |
+|---|---|---|---|---|---|---|
+| — | **Baseline** | **0.4744** | **0.2535** | **0.4204** | **0.2011** | — |
+| — | **Paper** | **0.42** | **0.34** | **0.37** | **0.15** | — |
+| 1 | Remove detach | 0.4765 | 0.2543 | 0.4224 | 0.1988 | Rejected |
+| 2 | Self-conditioning | 0.4719 | 0.2523 | 0.4218 | 0.1999 | **Best overall** |
+| 3 | Cosine schedule | 0.6709 | 0.2813 | 0.6433 | 0.2141 | Rejected |
+| 4 | v-prediction | 0.4790 | 0.2531 | 0.4216 | 0.2049 | Rejected |
+| 5 | ANT schedule | 0.7309 | 0.2803 | 0.6513 | 0.2055 | Rejected |
+| 6 | Contrastive loss | 0.5535 | 0.2555 | 0.4925 | 0.1946 | Rejected |
+| 7 | MG-TSD guidance | 0.5653 | 0.2558 | 0.4819 | **0.1913** | Rejected |
+| 8 | Channel-aware | 0.9313 | 0.2552 | 0.9136 | 0.1928 | Rejected |
+| 9 | Patch+attention | 0.5388 | 0.2541 | 0.4900 | 0.1984 | Rejected |
+| 10 | x0+decomposition | 0.4842 | **0.2508** | **0.4194** | 0.1969 | **Most promising** |
+
+**Best per benchmark:**
+- ETTh1 Multi: Exp 2 (0.4719) — paper: 0.42, gap: +12.4%
+- ETTh1 Uni: **Exp 10 (0.2508)** — paper: 0.34, **beats paper by 26.2%**
+- ETTm1 Multi: **Exp 10 (0.4194)** — paper: 0.37, gap: +13.4%
+- ETTm1 Uni: **Exp 7 (0.1913)** — paper: 0.15, gap: +27.5%
+
+**Key takeaways from the full campaign:**
+1. **Diffusion remains fundamentally cosmetic.** Across 10 experiments and 40 evaluations, diffusion contributed meaningfully exactly once (Exp 10, ETTh1 Uni: -1.3%).
+2. **Every improvement that helps univariate hurts multivariate.** This is the campaign's defining pattern — no single change improved both.
+3. **The DLinear backbone is the real model.** All meaningful performance comes from the 113K-param direct predictor.
+4. **Small datasets resist architectural complexity.** Experiments 3, 5, 7, 8, 9 all added complexity and all regressed on multivariate.
+5. **Exp 10 (x0+decomposition) is the most promising direction** — best balance, only experiment where diffusion helped, and didn't catastrophically hurt multivariate.
+
+---

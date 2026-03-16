@@ -184,6 +184,75 @@ Ordered by expected-impact-to-effort ratio:
 
 ---
 
+---
+
+## Improvement 11: Deep Backbone with Standard Residuals (Control)
+
+**What:** Replace the flat DLinear backbone (2 linear projections) with a stack of 4 Conv1d blocks using standard additive residual connections. Each path (trend, residual) gets its own 4-block deep encoder before projecting to forecast length. No AttnRes yet — this is the control experiment to isolate whether backbone depth alone helps.
+
+**Why this is the right move:** Experiments 1-10 all invested complexity in the diffusion side, which contributes ~0% to final MAE. The DLinear backbone does 100% of useful prediction with just 2 linear layers (113K params). Adding depth to the backbone directly improves the thing that actually matters. Standard residuals provide a clean baseline for comparing AttnRes in Experiment 12.
+
+**Architecture:**
+```
+lookback [B, H, D] → transpose → [B, D, H]
+  → Trend extraction (avg-pool k=25)
+  → For each of {trend, residual}:
+      → 4x [Conv1d(k=3) → GroupNorm(16) → LeakyReLU → Dropout(0.3)]
+        with standard additive residuals (x = x + block(x))
+      → Linear(H → T)
+  → output = trend_path + residual_path → [B, T, D]
+```
+
+**Expected impact:** Moderate. 2-5% improvement across all experiments. The Conv blocks capture local nonlinear temporal patterns that linear projections miss. Risk is low because additive residuals degrade gracefully — if the conv blocks learn nothing useful, the model reduces to DLinear.
+
+**Complexity:** Easy — ~80 lines. New `DeepBackbone` class in mr_diff.py, replaces `direct_predict()`.
+
+---
+
+## Improvement 12: Deep Backbone with Attention Residuals (AttnRes)
+
+**What:** Same deep backbone as Experiment 11, but replace the standard additive residual connections with Attention Residuals (AttnRes) from Kimi's paper. Each layer gets a learned pseudo-query vector `w_l` that computes softmax attention over all prior layer outputs via RMSNorm'd keys. This lets each layer selectively retrieve information from any earlier layer rather than being forced to accumulate everything uniformly.
+
+**Why it should beat Exp 11:** Standard residuals accumulate all prior layer outputs with fixed unit weights, causing (a) dilution of early layers' contributions and (b) inability to skip back to the raw input when intermediate layers aren't helpful. AttnRes solves both: the softmax attention lets later layers selectively emphasize the most useful prior representations. The paper shows this consistently outperforms standard residuals across all model scales, with Block AttnRes matching the loss of a baseline trained with 1.25x more compute.
+
+**Key implementation details:**
+- Pseudo-query `w_l ∈ R^d` per layer (one 64-dim vector each = 256 total params)
+- Keys: `k_i = RMSNorm(v_i)` where `v_i` is layer i's output (or embedding for i=0)
+- Attention: `α_{i→l} = softmax(w_l^T · RMSNorm(v_i))` — softmax over depth dimension
+- Input to layer l: `h_l = Σ α_{i→l} · v_i`
+- **Zero initialization**: `w_l` initialized to zero → uniform attention at start = standard residuals
+- Full AttnRes (not Block) since we only have 4 layers — O(L²d) is trivial
+
+**Expected impact:** 3-8% improvement over Experiment 11. The selective retrieval is most valuable for multivariate where different layers may specialize on different temporal patterns. Zero-init guarantees we can't do worse than Exp 11 at initialization.
+
+**Complexity:** Medium — ~120 lines. New `AttnRes` module + `AttnResDeepBackbone` class.
+
+**Reference:** "Attention Residuals" (Kimi Team, 2026). [GitHub](https://github.com/MoonshotAI/Attention-Residuals)
+
+---
+
+## Improvement 13: AttnRes Backbone + Learned Stage Aggregation
+
+**What:** Build on Experiment 12's AttnRes backbone. Additionally, replace the fixed equal-weight summation of diffusion stage outputs with a learned softmax aggregation: `final = Σ α_s · stage_pred_s` where `α_s = softmax(w^T · RMSNorm(stage_pred_s))`. This applies the same AttnRes principle to the multi-resolution stage hierarchy.
+
+**Why this helps:** Currently all 5 (now 3) diffusion stages are summed with equal weight. Our experiments show diffusion is cosmetic and sometimes harmful — equal weighting means bad stages drag down good ones. Learned aggregation lets the model suppress unhelpful stages (driving their weight toward zero) and focus on whichever stage captures useful residual structure. This is the depth-wise AttnRes idea applied to the resolution dimension.
+
+**Architecture addition:**
+```
+stage_predictions = [pred_0, pred_1, pred_2]  # from diffusion
+stage_query = nn.Parameter(zeros(hidden_dim))  # learned
+keys = [RMSNorm(stage_proj(pred_s)) for s in range(S)]
+α = softmax([stage_query^T · key_s for s in range(S)])
+aggregated = Σ α_s · pred_s
+final = direct_pred + aggregated
+```
+
+**Expected impact:** Small incremental (1-3%) on top of Exp 12. Most impactful on multivariate where stage quality varies. The main value is robustness — bad stages can't hurt.
+
+**Complexity:** Easy — ~40 lines on top of Exp 12. Add `StageAggregator` module, wire into `sample()` and `training_step()`.
+
+---
+
 ## References
 
 - Chen et al., "Analog Bits" (ICLR 2023) — [arXiv:2208.04202](https://arxiv.org/abs/2208.04202)
@@ -197,3 +266,4 @@ Ordered by expected-impact-to-effort ratio:
 - Residual Denoising Diffusion Models — [arXiv:2308.13712](https://arxiv.org/abs/2308.13712)
 - "TimeDiff" (ICML 2023) — [arXiv:2306.05043](https://arxiv.org/abs/2306.05043)
 - "TSDiff" (NeurIPS 2023) — [arXiv:2307.11494](https://arxiv.org/abs/2307.11494)
+- "Attention Residuals" (Kimi Team, 2026) — [GitHub](https://github.com/MoonshotAI/Attention-Residuals)
