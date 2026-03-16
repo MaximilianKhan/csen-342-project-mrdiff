@@ -3,7 +3,7 @@
 
 model:
   num_stages: 3          # was 5 — fewer cascade errors, fewer params
-  diffusion_steps: 100
+  diffusion_steps: 100   # keeping 100 steps — cosine schedule needs sufficient steps
   embedding_dim: 64      # was 128
   hidden_dim: 64         # was 256 — critical reduction
   kernel_sizes: [25, 201]  # 3 stages: finest residual, mid residual, coarsest trend
@@ -32,7 +32,7 @@ training:
   grad_clip_norm: 1.0
   beta_start: 0.0001
   beta_end: 0.1
-  schedule_type: linear    # linear schedule (cosine tested, linear works better)
+  schedule_type: cosine    # cosine schedule — smoother noise progression (Nichol & Dhariwal 2021)
   mixup_prob: 0.5
 
 logging:

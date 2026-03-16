@@ -222,7 +222,11 @@ class Decoder(nn.Module):
 
 
 class DenoisingNetwork(nn.Module):
-    """Full denoising network with encoder-decoder skip connections."""
+    """Full denoising network with encoder-decoder skip connections.
+
+    Supports self-conditioning: concatenates a previous x0 estimate to the
+    noisy input, giving the denoiser iterative refinement ability.
+    """
 
     def __init__(
         self,
@@ -236,9 +240,11 @@ class DenoisingNetwork(nn.Module):
         dropout: float = 0.1,
     ):
         super().__init__()
+        self.input_dim = input_dim
 
+        # Encoder takes 2*D input: y_noisy concat x0_prev (or zeros)
         self.encoder = Encoder(
-            input_dim=input_dim,
+            input_dim=input_dim * 2,
             hidden_dim=hidden_dim,
             step_embed_dim=step_embed_dim,
             num_layers=num_encoder_layers,
@@ -260,21 +266,25 @@ class DenoisingNetwork(nn.Module):
         y_noisy: torch.Tensor,
         step_embed: torch.Tensor,
         conditioning: torch.Tensor,
+        x0_prev: torch.Tensor = None,
     ) -> torch.Tensor:
-        """Predict clean data from noisy input.
+        """Predict clean data from noisy input with optional self-conditioning.
 
         Args:
             y_noisy: Noisy data Y^k [B, T, D].
             step_embed: Diffusion step embedding p^k [B, step_embed_dim].
             conditioning: Conditioning signal c_s [B, T, cond_dim].
+            x0_prev: Previous x0 estimate [B, T, D] for self-conditioning.
 
         Returns:
             Predicted clean data Y^θ_s [B, T, D].
         """
-        # Encode — get latent + skip features
-        z, encoder_skips = self.encoder(y_noisy, step_embed)
+        # Self-conditioning: concat previous x0 estimate (or zeros)
+        if x0_prev is None:
+            x0_prev = torch.zeros_like(y_noisy)
+        encoder_input = torch.cat([y_noisy, x0_prev], dim=-1)  # [B, T, 2D]
 
-        # Decode with skip connections
+        z, encoder_skips = self.encoder(encoder_input, step_embed)
         y_pred = self.decoder(z, conditioning, encoder_skips)
 
         return y_pred
@@ -319,6 +329,7 @@ class MultiStageDenoisingNetwork(nn.Module):
         y_noisy: torch.Tensor,
         step_embed: torch.Tensor,
         conditioning: torch.Tensor,
+        x0_prev: torch.Tensor = None,
     ) -> torch.Tensor:
         """Apply denoising for a specific stage."""
-        return self.networks[stage](y_noisy, step_embed, conditioning)
+        return self.networks[stage](y_noisy, step_embed, conditioning, x0_prev)

@@ -45,6 +45,7 @@ class DiffusionSchedule:
             alpha_bars = f / f[0]
             # Clip and compute betas from alpha_bars
             alpha_bars = alpha_bars[1:]  # Remove t=0
+            alpha_bars = alpha_bars.clamp(min=1e-4)  # Prevent alpha_bar → 0 which causes division explosion
             alpha_bars_prev = torch.cat([torch.tensor([1.0], device=self.device), alpha_bars[:-1]])
             self.betas = (1 - alpha_bars / alpha_bars_prev).clamp(max=0.999)
             self.alpha_bars = alpha_bars

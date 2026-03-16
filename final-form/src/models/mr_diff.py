@@ -178,15 +178,17 @@ class MRDiff(nn.Module):
         batch_size = lookback.size(0)
         device = lookback.device
 
-        # Direct prediction + residual diffusion
+        # Direct prediction + residual diffusion (joint training)
         direct_pred = self.direct_predict(lookback)
         direct_loss = nn.functional.mse_loss(direct_pred, forecast)
-        residual = forecast - direct_pred.detach()  # Detach so diffusion doesn't backprop through direct
+        residual = forecast - direct_pred  # No detach: diffusion gradients flow through backbone
 
         # Decompose RESIDUAL into multi-resolution components
         components = self.decompose_target(residual)
 
-        total_loss = direct_loss  # Start with direct prediction loss
+        # Scale diffusion loss relative to direct loss to prevent gradient dominance
+        diffusion_loss_scale = 0.3
+        total_loss = direct_loss
         stage_losses = {}
         stage_predictions = {}  # For scheduled sampling
 
@@ -231,24 +233,39 @@ class MRDiff(nn.Module):
                 training=True,
             )
 
-            # Predict noise (epsilon prediction)
+            # Self-conditioning: 50% of the time, get a preliminary x0 estimate first
+            x0_prev = None
+            if torch.rand(1).item() < 0.5:
+                with torch.no_grad():
+                    eps_prelim = self.denoising(
+                        stage=s, y_noisy=yk_s, step_embed=step_embed,
+                        conditioning=conditioning, x0_prev=None,
+                    )
+                    alpha_bar_k = self.schedule.alpha_bars[k].view(-1, 1, 1)
+                    x0_prev = (yk_s - torch.sqrt(1 - alpha_bar_k) * eps_prelim) / torch.sqrt(alpha_bar_k).clamp(min=1e-5)
+                    x0_prev = x0_prev.detach()
+
+            # Predict noise (epsilon prediction) with self-conditioning
             eps_pred = self.denoising(
                 stage=s,
                 y_noisy=yk_s,
                 step_embed=step_embed,
                 conditioning=conditioning,
+                x0_prev=x0_prev,
             )
 
             # Recover x0 from epsilon prediction for scheduled sampling
             alpha_bar_k = self.schedule.alpha_bars[k].view(-1, 1, 1)
-            x0_pred = (yk_s - torch.sqrt(1 - alpha_bar_k) * eps_pred) / torch.sqrt(alpha_bar_k).clamp(min=1e-5)
+            x0_pred = (yk_s - torch.sqrt(1 - alpha_bar_k) * eps_pred) / torch.sqrt(alpha_bar_k).clamp(min=1e-3)
+            x0_pred = x0_pred.clamp(-10, 10)  # Prevent explosion at high noise levels
             stage_predictions[s] = x0_pred.detach()
 
             # Compute loss: predict noise (uniform difficulty across k)
             loss_s = nn.functional.mse_loss(eps_pred, noise)
 
             # Frequency-domain auxiliary loss — match spectral structure
-            fft_pred = torch.fft.rfft(x0_pred, dim=1).abs()
+            # Use detached x0_pred to prevent FFT loss gradient explosion
+            fft_pred = torch.fft.rfft(x0_pred.detach(), dim=1).abs()
             fft_target = torch.fft.rfft(y0_s, dim=1).abs()
             freq_loss = nn.functional.mse_loss(fft_pred, fft_target)
             loss_s = loss_s + 0.1 * freq_loss
@@ -258,7 +275,7 @@ class MRDiff(nn.Module):
             loss_s = loss_s * stage_weight
 
             stage_losses[s] = loss_s
-            total_loss = total_loss + loss_s
+            total_loss = total_loss + diffusion_loss_scale * loss_s
 
         return total_loss, stage_losses
 
@@ -340,6 +357,8 @@ class MRDiff(nn.Module):
             batch_size, self.forecast_length, self.input_dim, device=device,
         )
 
+        x0_prev = None  # Self-conditioning: track previous x0 estimate
+
         for k in range(self.diffusion_steps - 1, -1, -1):
             k_tensor = torch.full((batch_size,), k, device=device, dtype=torch.long)
             step_embed = self.step_embedding(k_tensor)
@@ -349,16 +368,17 @@ class MRDiff(nn.Module):
                 target=None, mixup_prob=0.0, training=False,
             )
 
-            # Model predicts epsilon (noise)
+            # Model predicts epsilon (noise) with self-conditioning
             eps_pred = self.denoising(
                 stage=s, y_noisy=yk, step_embed=step_embed,
-                conditioning=conditioning,
+                conditioning=conditioning, x0_prev=x0_prev,
             )
 
             # Convert epsilon to x0
             alpha_bar = self.schedule.alpha_bars[k]
             x0_pred = (yk - torch.sqrt(1 - alpha_bar) * eps_pred) / torch.sqrt(alpha_bar).clamp(min=1e-5)
             x0_pred = x0_pred * epsilon_scale
+            x0_prev = x0_pred  # Feed x0 estimate to next step for self-conditioning
 
             if k > 0:
                 alpha = self.schedule.alphas[k]
@@ -386,17 +406,22 @@ class MRDiff(nn.Module):
             target=None, mixup_prob=0.0, training=False,
         )
 
+        # Self-conditioning state: track x0 from previous solver call
+        x0_state = [None]  # Use list for closure mutability
+
         # Build model_fn closure: (y_noisy, k_tensor) -> x0_pred
         def model_fn(yk, k_tensor):
             step_embed = self.step_embedding(k_tensor)
             eps_pred = self.denoising(
                 stage=s, y_noisy=yk, step_embed=step_embed,
-                conditioning=conditioning,
+                conditioning=conditioning, x0_prev=x0_state[0],
             )
             # Convert epsilon to x0
             alpha_bar = self.schedule.alpha_bars[k_tensor[0]]
             x0_pred = (yk - torch.sqrt(1 - alpha_bar) * eps_pred) / torch.sqrt(alpha_bar).clamp(min=1e-5)
-            return x0_pred * epsilon_scale
+            x0_pred = x0_pred * epsilon_scale
+            x0_state[0] = x0_pred  # Update for next call
+            return x0_pred
 
         dpm_solver = DPMSolverPP(self.schedule, num_solver_steps=solver_steps)
         shape = (batch_size, self.forecast_length, self.input_dim)
