@@ -253,6 +253,79 @@ final = direct_pred + aggregated
 
 ---
 
+---
+
+## Improvement 14: Multi-Scale AttnRes DLinear (Width, Not Depth)
+
+**What:** Instead of deepening the backbone (which overfits — Exp 11-13), go *wide*. Run N parallel DLinear projections with different trend-extraction kernel sizes (capturing different temporal scales), then fuse them with AttnRes-style learned softmax attention. Each projection has the same parameter count as the current single DLinear — we're adding *perspectives*, not capacity-per-perspective.
+
+**Why this avoids the Exp 11-13 failure mode:** Experiments 11-13 proved that backbone depth causes overfitting on our small datasets. But AttnRes itself was validated (Exp 12 beat Exp 11 on 3/4 benchmarks). The insight: apply AttnRes *laterally across parallel views* instead of *vertically across stacked layers*. Each parallel DLinear is the same lightweight architecture that already works — we're just letting the model choose which temporal scale matters most for each dataset, with zero-init ensuring it starts as an equal-weight average (safe fallback).
+
+**Architecture:**
+```
+lookback [B, H, D] → transpose → [B, D, H]
+
+# N parallel DLinear paths, each with different trend kernel
+proj_k5  = DLinear(lookback, kernel=5)     # Fine: captures short cycles
+proj_k15 = DLinear(lookback, kernel=15)    # Medium-fine
+proj_k25 = DLinear(lookback, kernel=25)    # Current baseline scale
+proj_k51 = DLinear(lookback, kernel=51)    # Coarse: captures weekly+ trends
+
+# AttnRes fusion: learned query attends over scale-specific projections
+query = nn.Parameter(zeros(D))             # Zero-init → uniform start
+keys = [RMSNorm(proj) for proj in projections]   # Normalize per-scale
+α = softmax([query^T · key_s for s in scales])
+output = Σ α_s · proj_s                   # [B, T, D]
+```
+
+**Key properties:**
+- Each parallel DLinear is ~113K/N params (split the budget) or ~113K each (modest increase)
+- AttnRes attention adds only N×D params (~28 total for N=4, D=7)
+- Zero-init query → equal-weight average at start = no worse than any single DLinear
+- Different kernels capture multi-resolution structure in the *backbone*, not diffusion
+- No depth → no vanishing gradients, no compounding overfitting
+
+**Expected impact:** 2-6% improvement across all benchmarks. Multi-scale coverage should help multivariate (different channels have different dominant frequencies) without the overfitting that killed Exp 11-13.
+
+**Complexity:** Easy — ~60 lines. No diffusion changes needed.
+
+---
+
+## Improvement 15: Tiny Direct Transformer (PatchTST-Style, No Diffusion)
+
+**What:** Replace the entire mr-Diff architecture with a tiny PatchTST-style transformer that directly forecasts. No diffusion, no conditioning networks, no denoising — just patches, self-attention, and a linear head. Deliberately right-sized to ~100-150K params to match DLinear's data regime.
+
+**Why this is different from Exp 9 (which failed):** Exp 9 put a transformer *inside* the conditioning network of the diffusion model. The transformer's output had to be consumed by a denoiser through a conditioning bottleneck, creating an impedance mismatch. Here the transformer IS the model — it directly produces the forecast. No diffusion overhead, no gradient interference, no bottleneck.
+
+**Architecture:**
+```
+lookback [B, H, D]
+  → Patch embedding (patch_size=16, stride=16)
+    → [B, N_patches, patch_size * D]
+    → Linear(patch_size * D → d_model)            # d_model = 64
+    → + learnable positional embedding [N_patches, d_model]
+  → TransformerEncoder(num_layers=2, nhead=4, dim_ff=128, dropout=0.3)
+    → [B, N_patches, d_model]
+  → Flatten → Linear(N_patches * d_model → T * D)
+  → Reshape → [B, T, D]
+```
+
+**Target params:** ~100-150K for ETTh1 (21 patches), ~200-300K for ETTm1 (90 patches). Right in the DLinear regime.
+
+**Why this could beat DLinear on multivariate:** DLinear treats each channel independently through shared linear projections — it can't learn cross-channel dynamics. Self-attention over patches naturally captures both temporal and cross-channel patterns (each patch token contains all D channels at that time window). With only 2 layers and 4 heads at d_model=64, it's too small to overfit but expressive enough to capture the cross-variable correlations that DLinear misses.
+
+**Why this could beat DLinear on univariate:** Self-attention gives global receptive field over the entire lookback. DLinear's single linear projection has no notion of local vs global temporal structure. The transformer can learn to weight recent vs distant history adaptively.
+
+**Training:** Same setup — AdamW, cosine LR, early stopping, global-std evaluation. RevIN normalization preserved.
+
+**Expected impact:** Potentially 5-10% multivariate improvement if cross-channel attention works at this scale. Univariate should be competitive with DLinear (±2%). This is the highest-variance experiment — it could be a breakthrough or a wash.
+
+**Complexity:** Medium — new model class (~100 lines), new train.py that bypasses diffusion entirely.
+
+**Reference:** "A Time Series is Worth 64 Words" (PatchTST, ICLR 2023). [arXiv:2211.14730](https://arxiv.org/abs/2211.14730)
+
+---
+
 ## References
 
 - Chen et al., "Analog Bits" (ICLR 2023) — [arXiv:2208.04202](https://arxiv.org/abs/2208.04202)
