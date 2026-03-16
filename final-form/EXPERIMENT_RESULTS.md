@@ -59,3 +59,26 @@
 **Potential next steps:** Cosine schedule + fewer diffusion steps (Exp 3) to improve training efficiency and noise distribution. Better noise scheduling may help the denoiser learn more from each gradient step.
 
 ---
+
+## Experiment 3: Cosine Schedule
+
+**Change:** Switched from linear beta schedule (`beta_start=1e-4, beta_end=0.1`) to cosine schedule (Nichol & Dhariwal 2021). The cosine schedule provides smoother noise progression with less wasted capacity at the endpoints. Config-only change: `schedule_type: cosine` in `small.yaml`.
+
+**Training time:** ~25 min (46-98 epochs across experiments, early stopping triggered earlier for ETTm1 Multi)
+
+| Experiment | Baseline MAE | Exp 2 MAE | Exp 3 MAE | vs Exp 2 | vs Paper |
+|---|---|---|---|---|---|
+| ETTh1 Multi | 0.4744 | 0.4719 | 0.6709 | **+42.2%** | +59.7% |
+| ETTh1 Uni | 0.2535 | 0.2523 | 0.2813 | **+11.5%** | -17.3% |
+| ETTm1 Multi | 0.4204 | 0.4218 | 0.6433 | **+52.5%** | +73.9% |
+| ETTm1 Uni | 0.2011 | 0.1999 | 0.2141 | **+7.1%** | +42.7% |
+
+**Direct MAE vs Full MAE:** Diffusion still cosmetic (Direct ≈ Full across all experiments).
+
+**What went wrong:** The cosine schedule catastrophically hurt multivariate performance (+42-53% regression) and also degraded univariate (+7-12%). The cosine schedule concentrates noise at lower levels (more steps with small noise), which may starve the denoiser of high-noise training signal on these small datasets. With only ~8K-10K samples, the model needs exposure to a wide range of noise levels per epoch — the linear schedule's uniform spread is actually better for our data regime.
+
+**Why multivariate is hit hardest:** Multivariate (D=7) has 7x more variance to handle. The cosine schedule's slow noise ramp means the model sees mostly low-noise inputs during training, but at inference it must denoise from pure noise. The distribution mismatch is amplified by higher dimensionality.
+
+**Verdict:** Cosine schedule is **rejected**. Reverting to linear schedule for all future experiments. Experiment 4 will build on Experiment 2 (our current best).
+
+---
