@@ -1,0 +1,52 @@
+# mr-Diff Configuration — Right-sized for ETT datasets (~10K samples)
+# Reduces params from 17.5M → ~500K to prevent collapse to zero prediction
+
+model:
+  num_stages: 3          # was 5 — fewer cascade errors, fewer params
+  diffusion_steps: 100   # keeping 100 steps — cosine schedule needs sufficient steps
+  embedding_dim: 64      # was 128
+  hidden_dim: 64         # was 256 — critical reduction
+  kernel_sizes: [25, 201]  # 3 stages: finest residual, mid residual, coarsest trend
+  dropout: 0.3           # was 0.1 — much stronger regularization
+  num_encoder_layers: 2  # was 3
+  num_decoder_layers: 2  # was 3
+
+data:
+  dataset: "ETTh1"
+  data_path: "data/ETDataset"
+  lookback_length: 336
+  forecast_length: 168
+  batch_size: 64
+  num_workers: 4
+  train_ratio: 0.6
+  val_ratio: 0.2
+  test_ratio: 0.2
+  univariate: false
+
+training:
+  learning_rate: 0.0005    # was 0.001 — slower learning for stability
+  weight_decay: 0.01       # was 0.0001 — 100x stronger regularization
+  max_epochs: 100
+  min_epochs: 30
+  early_stopping_patience: 20
+  grad_clip_norm: 1.0
+  beta_start: 0.0001
+  beta_end: 0.1
+  schedule_type: linear    # linear schedule — reverted from cosine (Exp 3 regression)
+  mixup_prob: 0.5
+
+logging:
+  log_dir: "logs"
+  checkpoint_dir: "checkpoints"
+  log_every_n_steps: 100
+  save_every_n_epochs: 5
+  tensorboard: true
+  csv_logging: true
+
+evaluation:
+  num_samples: 10
+  metrics: ["mae", "mse"]
+
+experiment:
+  name: "mr_diff_small"
+  seed: 42

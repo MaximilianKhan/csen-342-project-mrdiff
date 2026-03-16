@@ -82,3 +82,26 @@
 **Verdict:** Cosine schedule is **rejected**. Reverting to linear schedule for all future experiments. Experiment 4 will build on Experiment 2 (our current best).
 
 ---
+
+## Experiment 4: v-Prediction Parameterization
+
+**Change:** Switched from epsilon-prediction to v-prediction (Salimans & Ho, 2022). Instead of predicting noise ε, the denoiser predicts `v = α_t · ε - σ_t · x0`, which has uniform gradient variance across all timesteps. Updated training loss target, x0 recovery (`x0 = α_t · y_t - σ_t · v`), and both DDPM and DPM-Solver++ sampling paths. Built on Experiment 2 codebase (linear schedule). Code isolated in `exp4_v_prediction/`.
+
+**Training time:** 34.3 min (50-56 epochs across experiments)
+
+| Experiment | Baseline MAE | Exp 2 MAE | Exp 4 MAE | vs Exp 2 | vs Paper |
+|---|---|---|---|---|---|
+| ETTh1 Multi | 0.4744 | 0.4719 | 0.4790 | +1.5% | +14.0% |
+| ETTh1 Uni | 0.2535 | 0.2523 | 0.2531 | +0.3% | -25.6% |
+| ETTm1 Multi | 0.4204 | 0.4218 | 0.4216 | -0.0% | +13.9% |
+| ETTm1 Uni | 0.2011 | 0.1999 | 0.2049 | +2.5% | +36.6% |
+
+**Direct MAE vs Full MAE:** Diffusion still cosmetic (Direct ≈ Full across all experiments).
+
+**What didn't work:** v-prediction showed no improvement over epsilon-prediction. ETTh1 Multi and ETTm1 Uni both regressed slightly. The uniform gradient variance advantage of v-prediction assumes the model is capacity-limited by gradient scale inconsistency — but our 843K-param model on small datasets is more limited by data scarcity than gradient dynamics. The epsilon-prediction baseline already converges well within 50-60 epochs.
+
+**Why:** v-prediction primarily helps when: (a) training for many epochs where gradient scale matters cumulatively, or (b) using cosine/aggressive noise schedules where ε-prediction has extreme variance. With our linear schedule and early-stopped training (~50 epochs), ε-prediction's gradient variance is manageable. The overhead of predicting a rotated target doesn't pay for itself.
+
+**Verdict:** v-prediction is **rejected**. Epsilon-prediction retained for all future experiments. Experiment 5 will build on Experiment 2 (still our best).
+
+---
