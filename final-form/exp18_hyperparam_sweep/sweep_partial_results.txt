@@ -1,0 +1,81 @@
+/home/max/anaconda3/envs/342wi26/lib/python3.9/site-packages/torch/nn/modules/transformer.py:392: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  warnings.warn(
+======================================================================
+EXP 18: Hyperparameter Sweep — CI+Decomp Transformer
+  30 configs × 4 benchmarks
+======================================================================
+  Loaded ETTh1_multi: 9949 train samples
+  Loaded ETTh1_uni: 9949 train samples
+  Loaded ETTm1_multi: 40177 train samples
+  Loaded ETTm1_uni: 40177 train samples
+
+============================================================
+  Config 1/30: exp17_baseline
+  patch=16 d=64 layers=2 ff=128 drop=0.3 tk=25 lr=0.0005 wd=0.01
+============================================================
+/home/max/anaconda3/envs/342wi26/lib/python3.9/site-packages/torch/nn/modules/transformer.py:392: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  warnings.warn(
+    ETTh1_multi: MAE=0.5069 | 77,026 params | 31 epochs | 49.9s
+    ETTh1_uni: MAE=0.2939 | 77,026 params | 30 epochs | 46.2s
+    ETTm1_multi: MAE=0.4181 | 108,994 params | 30 epochs | 292.7s
+    ETTm1_uni: MAE=0.1917 | 108,994 params | 30 epochs | 145.9s
+
+============================================================
+  Config 2/30: config_01
+  patch=8 d=32 layers=3 ff=128 drop=0.3 tk=15 lr=0.0005 wd=0.05
+============================================================
+    ETTh1_multi: MAE=0.4908 | 54,322 params | 30 epochs | 54.0s
+    ETTh1_uni: MAE=0.2514 | 54,322 params | 30 epochs | 52.8s
+    ETTm1_multi: MAE=0.4217 | 113,794 params | 30 epochs | 311.4s
+    ETTm1_uni: MAE=0.1887 | 113,794 params | 30 epochs | 193.7s
+
+============================================================
+  Config 3/30: config_02
+  patch=8 d=32 layers=3 ff=128 drop=0.2 tk=15 lr=0.0005 wd=0.005
+============================================================
+    ETTh1_multi: MAE=0.4881 | 54,322 params | 30 epochs | 52.2s
+    ETTh1_uni: MAE=0.2631 | 54,322 params | 30 epochs | 52.4s
+    ETTm1_multi: MAE=0.4134 | 113,794 params | 30 epochs | 317.2s
+    ETTm1_uni: MAE=0.2066 | 113,794 params | 30 epochs | 202.5s
+
+============================================================
+  Config 4/30: config_03
+  patch=12 d=32 layers=3 ff=64 drop=0.5 tk=15 lr=0.001 wd=0.05
+============================================================
+    ETTh1_multi: MAE=0.4914 | 36,818 params | 30 epochs | 52.4s
+    ETTh1_uni: MAE=0.2538 | 36,818 params | 30 epochs | 60.0s
+    ETTm1_multi: MAE=0.4201 | 76,482 params | 30 epochs | 237.7s
+    ETTm1_uni: MAE=0.2056 | 76,482 params | 30 epochs | 207.7s
+
+============================================================
+  Config 5/30: config_04
+  patch=16 d=32 layers=1 ff=256 drop=0.5 tk=25 lr=0.001 wd=0.005
+============================================================
+    ETTh1_multi: MAE=0.4946 | 29,762 params | 43 epochs | 49.5s
+    ETTh1_uni: MAE=0.2756 | 29,762 params | 30 epochs | 32.2s
+    ETTm1_multi: MAE=0.4210 | 59,522 params | 30 epochs | 121.7s
+    ETTm1_uni: MAE=0.1935 | 59,522 params | 30 epochs | 106.3s
+
+============================================================
+  Config 6/30: config_05
+  patch=12 d=64 layers=1 ff=64 drop=0.5 tk=15 lr=0.001 wd=0.01
+============================================================
+    ETTh1_multi: MAE=0.4962 | 37,842 params | 30 epochs | 32.7s
+    ETTh1_uni: MAE=0.2542 | 37,842 params | 30 epochs | 31.4s
+    ETTm1_multi: MAE=0.4181 | 80,450 params | 30 epochs | 149.5s
+    ETTm1_uni: MAE=0.2145 | 80,450 params | 30 epochs | 107.2s
+
+============================================================
+  Config 7/30: config_06
+  patch=16 d=32 layers=3 ff=128 drop=0.2 tk=25 lr=0.0005 wd=0.05
+============================================================
+    ETTh1_multi: MAE=0.5106 | 46,850 params | 43 epochs | 77.1s
+    ETTh1_uni: MAE=0.2602 | 46,850 params | 30 epochs | 53.4s
+    ETTm1_multi: MAE=0.4192 | 76,610 params | 30 epochs | 228.1s
+    ETTm1_uni: MAE=0.1881 | 76,610 params | 30 epochs | 192.4s
+
+============================================================
+  Config 8/30: config_07
+  patch=16 d=64 layers=3 ff=64 drop=0.2 tk=15 lr=0.002 wd=0.005
+============================================================
+    ETTh1_multi: MAE=0.4880 | 85,730 params | 30 epochs | 52.6s
