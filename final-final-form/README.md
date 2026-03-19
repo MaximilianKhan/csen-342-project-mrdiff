@@ -1,6 +1,6 @@
 # CSEN-342 Final Project: Multi-Resolution Diffusion Models for Time Series Forecasting
 
-**Santa Clara University, Winter 2026
+**Santa Clara University, Winter 2026**
 
 Baseline replication and improvement of "Multi-Resolution Diffusion Models for Time Series Forecasting" (mr-Diff, ICLR 2024).
 
