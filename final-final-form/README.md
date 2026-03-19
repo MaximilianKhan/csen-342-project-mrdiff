@@ -58,9 +58,7 @@ final-final-form/
 │           ├── ci_twoscale_transformer.py         # Two-scale decomposition
 │           └── itransformer.py                    # Inverted transformer
 │
-├── results/                     # Experiment logs and analysis
-│   ├── ALL_EXPERIMENT_RESULTS.md # Full experiment log: technical changes, Exps 1-31, AdaLN/ANT
-│   └── sweep_partial_results.txt # Raw sweep training logs
+├── ALL_EXPERIMENT_RESULTS.md    # Full experiment log: technical changes, Exps 1-31, AdaLN/ANT
 │
 └── slurm/                       # SLURM job scripts (SCU HPC)
     ├── job_2scale.sh
