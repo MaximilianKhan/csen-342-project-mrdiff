@@ -1,0 +1,56 @@
+# mr-Diff Configuration
+
+# Model hyperparameters
+model:
+  num_stages: 5
+  diffusion_steps: 100
+  embedding_dim: 128
+  hidden_dim: 256
+  kernel_sizes: [5, 25, 51, 201]  # τ1, τ2, τ3, τ4 for trend extraction
+  dropout: 0.1
+  num_encoder_layers: 3
+  num_decoder_layers: 3
+
+# Data configuration
+data:
+  dataset: "ETTh1"  # Options: "ETTh1", "ETTm1"
+  data_path: "data/ETDataset"
+  lookback_length: 336
+  forecast_length: 168  # Use 192 for ETTm1
+  batch_size: 64
+  num_workers: 4
+  train_ratio: 0.6
+  val_ratio: 0.2
+  test_ratio: 0.2
+  univariate: false  # If true, use only OT (last) column
+
+# Training configuration
+training:
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  max_epochs: 100
+  min_epochs: 30
+  early_stopping_patience: 20
+  grad_clip_norm: 1.0
+  beta_start: 0.0001
+  beta_end: 0.1
+  mixup_prob: 0.5  # Probability of applying future mixup
+
+# Logging configuration
+logging:
+  log_dir: "logs"
+  checkpoint_dir: "checkpoints"
+  log_every_n_steps: 100
+  save_every_n_epochs: 5
+  tensorboard: true
+  csv_logging: true
+
+# Evaluation configuration
+evaluation:
+  num_samples: 10  # Number of random trajectories to average over
+  metrics: ["mae", "mse"]
+
+# Experiment naming
+experiment:
+  name: "mr_diff"
+  seed: 42
