@@ -10,9 +10,11 @@ Replicating and improving **"Multi-Resolution Diffusion Models for Time Series F
 
 ## Summary
 
-mr-Diff (ICLR 2024), the paper we set out to reproduce, argues that multi-resolution diffusion is the key to long-horizon forecasting. We could not reproduce that. No code was released, so we rebuilt the model from scratch, and the paper as written gives a 17.5M-parameter network that simply predicts zeros on the small ETT datasets. Once we fixed the sizing and five other unstated choices to make it train, one ablation settled the question: removing the diffusion stack entirely changes MAE by less than 0.3%. A plain DLinear backbone was doing all the work.
+mr-Diff (ICLR 2024), the paper we set out to reproduce, argues that multi-resolution diffusion is the key to long-horizon forecasting. With no code released, we rebuilt the model from scratch using the specifications given in the paper. The paper, as written, gives a 17.5M-parameter network that simply predicts zeros on the small ETT datasets. Once we fixed the sizing and five other unstated choices to make it train, one ablation settled the question: removing the diffusion stack entirely changes MAE by less than 0.3%. A plain DLinear backbone was doing all the work.
 
-In hindsight the reason is simple. Diffusion is built for data-rich, genuinely uncertain generation, and ETT forecasting is neither: a few thousand windows of mostly trend and daily seasonality, scored on a single point estimate. So we dropped diffusion and kept the parts that earned their place, trend/residual decomposition and channel independence, in a small patch transformer that runs in one forward pass and trains in minutes. At 54 to 182K parameters, varying only because each benchmark is tuned separately, it beats our baseline on three of four benchmarks and the published paper on ETTh1 univariate by 27%.
+In hindsight the reason is simple, though it was hard to see past the authors' confidence that diffusion was essential. Diffusion is built for data-rich, genuinely uncertain generation, and ETT forecasting is neither: a few thousand windows of mostly trend and daily seasonality, scored on a single point estimate.
+
+Because of this, we completely removed diffusion and kept the parts that earned their place, trend/residual decomposition and channel independence, in a small patch transformer that runs in one forward pass and trains in minutes. It beats our baseline on three of four benchmarks and the published paper on ETTh1 univariate by 27%. The model we deployed uses just 94K parameters.
 
 ---
 
