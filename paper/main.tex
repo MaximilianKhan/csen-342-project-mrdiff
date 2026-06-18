@@ -22,7 +22,7 @@
 \IEEEauthorblockN{Maximilian Khan}
 \IEEEauthorblockA{Department of Computer Science\\ Santa Clara University\\ Santa Clara, CA, USA}
 \and
-\IEEEauthorblockN{Karthik Tamiledu}
+\IEEEauthorblockN{Karthik Tamil}
 \IEEEauthorblockA{Department of Computer Science\\ Santa Clara University\\ Santa Clara, CA, USA}
 }
 
@@ -337,7 +337,7 @@ All experiments were run on an NVIDIA RTX 5090 GPU with Python 3.9 and PyTorch 2
 Our baseline achieves MAE 0.47 to 0.20 versus the paper's 0.42 to 0.15. The gap comes from a train-test conditioning mismatch across stages, made worse by DDPM's sample quality being insufficient for stage composition. The combined improvements reach ETTh1 Multi 0.4773, ETTh1 Uni 0.2471, ETTm1 Multi 0.4081, and ETTm1 Uni 0.1865, two of which beat the paper. The 843K-parameter diffusion model is replaced by transformers of 54 to 182K parameters that train faster and perform better on three of four benchmarks. For deployment no ensemble is required: a single 94K-parameter two-scale network set the ETTm1 univariate record, and single CI+Decomp models are competitive on the rest. The two findings that drove this outcome are that diffusion contributes nothing measurable on small time series datasets, and that channel independence multiplies the effective training set size by $D$, which is as valuable as any architectural innovation.
 
 \section*{Team Contributions}
-Maximilian Khan (50\%): baseline implementation from scratch, the 31-experiment improvement campaign, CI+Decomp Transformer design, the hyperparameter sweep, AttnRes integration, ensemble design, and report writing. Karthik Tamiledu (50\%): overlapping patches implementation, iTransformer integration, two-scale decomposition, SLURM cluster scripts, and experiment documentation.
+Maximilian Khan (50\%): baseline implementation from scratch, the 31-experiment improvement campaign, CI+Decomp Transformer design, the hyperparameter sweep, AttnRes integration, ensemble design, and report writing. Karthik Tamil (50\%): overlapping patches implementation, iTransformer integration, two-scale decomposition, SLURM cluster scripts, and experiment documentation.
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}

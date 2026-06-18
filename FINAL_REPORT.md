@@ -2,7 +2,7 @@
 
 ## Replication and Improvement of "Multi-Resolution Diffusion Models for Time Series Forecasting" (mr-Diff) [1]
 
-**Maximilian Khan and Karthik Tamiledu**
+**Maximilian Khan and Karthik Tamil**
 **CSEN-342, Winter 2026, Santa Clara University**
 
 ---
@@ -344,5 +344,5 @@ The combined improvements reach ETTh1 Multi 0.4773, ETTh1 Uni 0.2471, ETTm1 Mult
 | Team Member | Contribution | Percentage |
 |-------------|-------------|------------|
 | Maximilian Khan | Baseline implementation from scratch, 31-experiment improvement campaign, CI+Decomp Transformer architecture design, hyperparameter sweep, AttnRes integration, ensemble design, report writing | 50% |
-| Karthik Tamiledu | Overlapping patches implementation, iTransformer integration, two-scale decomposition, SLURM cluster scripts, experiment documentation | 50% |
+| Karthik Tamil | Overlapping patches implementation, iTransformer integration, two-scale decomposition, SLURM cluster scripts, experiment documentation | 50% |
 | **Total** | | **100%** |
