@@ -360,6 +360,51 @@ def fig8_final_vs_paper():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# FIGURE 16: Final best results vs our own mr-Diff baseline — self-improvement
+# ══════════════════════════════════════════════════════════════════════════════
+def fig16_baseline_vs_best():
+    baseline = [0.4744, 0.2535, 0.4204, 0.2011]
+    ours     = [0.4773, 0.2471, 0.4081, 0.1865]
+    bench = ['ETTh1\nMulti', 'ETTh1\nUni', 'ETTm1\nMulti', 'ETTm1\nUni']
+
+    x = np.arange(len(bench))
+    w = 0.32
+    fig, ax = plt.subplots(figsize=(9, 5.5))
+    ax.bar(x - w/2, baseline, w, label='Our Baseline (mr-Diff replication)', color=COLORS['baseline'], edgecolor='white')
+    ax.bar(x + w/2, ours,     w, label='Our Best Result (diffusion-free)',   color=COLORS['ci_decomp'], edgecolor='white')
+
+    for i in range(len(bench)):
+        delta = (ours[i] - baseline[i]) / baseline[i] * 100
+        sign = '+' if delta > 0 else ''
+        color = '#27ae60' if delta < 0 else '#e74c3c'
+        ax.text(x[i] + w/2, ours[i] + 0.008,
+                f'{ours[i]:.4f}\n({sign}{delta:.1f}%)',
+                ha='center', va='bottom', fontsize=9, fontweight='bold', color=color)
+        ax.text(x[i] - w/2, baseline[i] + 0.008, f'{baseline[i]:.4f}',
+                ha='center', va='bottom', fontsize=9, color=COLORS['baseline'])
+
+    ax.set_ylabel('MAE (lower is better)')
+    ax.set_title('Figure 16: Final Best Results vs. Our mr-Diff Baseline')
+    ax.set_xticks(x)
+    ax.set_xticklabels(bench)
+    ax.set_ylim(0, 0.58)
+    ax.legend(loc='upper right', fontsize=10)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    for i in range(len(bench)):
+        if ours[i] < baseline[i]:
+            ax.annotate('BEATS\nBASELINE', xy=(x[i] + w/2, ours[i]),
+                        xytext=(x[i] + w/2, ours[i] - 0.04),
+                        ha='center', fontsize=7, fontweight='bold', color='#27ae60',
+                        arrowprops=dict(arrowstyle='->', color='#27ae60', lw=1.5))
+
+    fig.savefig(f'{OUT}/fig16_baseline_vs_best.png')
+    plt.close(fig)
+    print('  fig16_baseline_vs_best.png')
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # FIGURE 9: Experiment timeline — MAE progression across 27 experiments
 # ══════════════════════════════════════════════════════════════════════════════
 def fig9_experiment_timeline():
@@ -717,6 +762,7 @@ if __name__ == '__main__':
     fig6_sweep_landscape()
     fig7_all_improvements()
     fig8_final_vs_paper()
+    fig16_baseline_vs_best()
     fig9_experiment_timeline()
     fig10_param_comparison()
     fig11_ensemble_composition()
@@ -724,4 +770,4 @@ if __name__ == '__main__':
     fig13_mse_comparison()
     fig14_radar()
     fig15_summary_dashboard()
-    print('\nDone! 15 figures generated.')
+    print('\nDone! 16 figures generated.')

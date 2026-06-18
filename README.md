@@ -31,6 +31,8 @@ MAE on globally-standardized data, the paper's own metric space. Lower is better
 
 ![Our best result versus the paper on every benchmark](figures/fig8_final_vs_paper.png)
 
+![Our best result versus our own mr-Diff baseline](figures/fig16_baseline_vs_best.png)
+
 Every best result was produced by 54 to 182K-parameter transformers with no diffusion, trained in minutes. The single model we deployed is a 94K-parameter network from that family. See **[`FINAL_REPORT.md`](FINAL_REPORT.md) Table 7** for the authoritative breakdown and **[`code/ALL_EXPERIMENT_RESULTS.md`](code/ALL_EXPERIMENT_RESULTS.md)** for the full log behind every figure.
 
 ## Highlights
