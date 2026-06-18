@@ -27,6 +27,8 @@
 }
 
 \maketitle
+\thispagestyle{plain}
+\pagestyle{plain}
 
 \begin{abstract}
 This report covers our replication of mr-Diff~\cite{mrdiff} and the improvements we built on top of it. We implemented the full architecture from scratch in PyTorch and evaluated it on ETTh1 and ETTm1 in both univariate and multivariate settings. Our best baseline reaches MAE 0.47 to 0.20 on globally-standardized data after resolving six critical issues in the paper's described method, a faithful implementation of which produces MAE equivalent to predicting zeros. Through 14 diffusion-focused experiments we established that the diffusion component contributes less than 0.3\% to forecast accuracy, with a DLinear backbone doing all the work. This led us to replace the entire 843K-parameter diffusion pipeline with a Channel-Independent Decomposed Patch Transformer (54 to 182K parameters) that beats the baseline on three of four benchmarks, trains in minutes instead of 34 minutes, and requires only a single forward pass at inference. A 30-configuration hyperparameter sweep and heterogeneous ensembles refined the results further. We also explored overlapping patches, an iTransformer~\cite{itransformer} variant for cross-variate attention, and a two-scale decomposition aligned to the dominant daily cycle in electricity data.
@@ -77,6 +79,7 @@ All code is in Python 3.9 with PyTorch 2.7.1 and CUDA 11.8. Primary training ran
 \label{tab:hparams}
 \centering
 \small
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{lcccc}
 \toprule
 Parameter & ETTh1 M & ETTh1 U & ETTm1 M & ETTm1 U \\
@@ -91,7 +94,7 @@ learning rate   & 0.002 & 0.0005& 0.001 & 0.0005 \\
 weight decay    & 0.005 & 0.05  & 0.01  & 0.05 \\
 parameters      & 86K   & 54K   & 182K  & 77K \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
 \end{table}
 
 \subsection{Key Deviations from the Paper}
@@ -244,6 +247,7 @@ The iTransformer ensemble (Exp~29) and two-scale decomposition (Exp~31) set the 
 \label{tab:improvements}
 \centering
 \small
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{lcccc}
 \toprule
 Dataset & Baseline & CI+Decomp & iTrans Ens & Two-scale \\
@@ -253,7 +257,7 @@ ETTh1 Uni   & 0.2535 & 0.2505 & \textbf{0.2471} & 0.2574 \\
 ETTm1 Multi & 0.4204 & 0.4094 & 0.4103 & \textbf{0.4081} \\
 ETTm1 Uni   & 0.2011 & 0.1881 & 0.1911 & \textbf{0.1865} \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
 \end{table}
 
 The ensembles win precisely because their members make uncorrelated errors. Table~\ref{tab:members} shows the member breakdown for the three record-setting ensembles: in every case the ensemble MAE falls below all three of its individual members, which is the signature of variance reduction from architectural diversity rather than any single strong model.
@@ -263,6 +267,7 @@ The ensembles win precisely because their members make uncorrelated errors. Tabl
 \label{tab:members}
 \centering
 \small
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{lcccc}
 \toprule
 Benchmark (exp) & Member 1 & Member 2 & Member 3 & Ensemble \\
@@ -271,7 +276,7 @@ ETTh1 Multi (29) & 0.4878 & 0.4836 & 0.4915 & \textbf{0.4773} \\
 ETTh1 Uni (29)   & 0.2485 & 0.2507 & 0.2593 & \textbf{0.2471} \\
 ETTm1 Multi (31) & 0.4126 & 0.4110 & 0.4200 & \textbf{0.4081} \\
 \bottomrule
-\end{tabular}
+\end{tabular}}
 \end{table}
 
 \noindent Member 1 in the Exp~29 rows is the iTransformer (cross-variate attention); the other members are channel-independent models attending over time. In the Exp~31 row, member 1 is the two-scale model. The architectural orthogonality is what makes the averaging pay off.
