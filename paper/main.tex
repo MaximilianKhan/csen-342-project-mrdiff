@@ -10,6 +10,12 @@
 \usepackage{xcolor}
 \usepackage{url}
 \usepackage[hidelinks]{hyperref}
+\usepackage{etoolbox}
+
+% IEEEtran prints "Abstract---" and "Index Terms---" with an em dash run-in
+% separator. Replace those em dashes with a colon (no em dashes anywhere).
+\patchcmd{\abstract}{---}{:\ }{}{}
+\patchcmd{\IEEEkeywords}{---}{:\ }{}{}
 
 % A clean macro for "vs baseline / vs paper" negative deltas (improvements).
 \newcommand{\good}[1]{\textbf{#1}}
