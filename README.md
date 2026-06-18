@@ -14,7 +14,7 @@ mr-Diff (ICLR 2024), the paper we set out to reproduce, argues that multi-resolu
 
 In hindsight the reason is simple, though it was hard to see past the authors' confidence that diffusion was essential. Diffusion is built for data-rich, genuinely uncertain generation, and ETT forecasting is neither: a few thousand windows of mostly trend and daily seasonality, scored on a single point estimate.
 
-Because of this, we completely removed diffusion and kept the parts that earned their place, trend/residual decomposition and channel independence, in a small patch transformer that runs in one forward pass and trains in minutes. It beats our baseline on three of four benchmarks and the published paper on ETTh1 univariate by 27%. The model we deployed uses just 94K parameters.
+Because of this, we completely removed diffusion and kept the parts that earned their place, trend/residual decomposition and channel independence, in a small patch transformer that runs in one forward pass and trains in minutes. Tuned per benchmark, these models beat our baseline on three of four benchmarks, and an ensemble of them beats the published paper on ETTh1 univariate by 27%. The single model we deployed uses just 94K parameters.
 
 ---
 
@@ -31,14 +31,14 @@ MAE on globally-standardized data, the paper's own metric space. Lower is better
 
 ![Our best result versus the paper on every benchmark](figures/fig8_final_vs_paper.png)
 
-Every best result was produced by a 54 to 182K-parameter transformer with no diffusion, trained in minutes. See **[`FINAL_REPORT.md`](FINAL_REPORT.md) Table 7** for the authoritative breakdown and **[`code/ALL_EXPERIMENT_RESULTS.md`](code/ALL_EXPERIMENT_RESULTS.md)** for the full log behind every figure.
+Every best result was produced by 54 to 182K-parameter transformers with no diffusion, trained in minutes. The single model we deployed is a 94K-parameter network from that family. See **[`FINAL_REPORT.md`](FINAL_REPORT.md) Table 7** for the authoritative breakdown and **[`code/ALL_EXPERIMENT_RESULTS.md`](code/ALL_EXPERIMENT_RESULTS.md)** for the full log behind every figure.
 
 ## Highlights
 
 - **Reproduced an unreleased ICLR 2024 architecture from scratch** and identified the six undocumented decisions required to make it train rather than collapse.
 - **A clean reproducibility finding:** the paper's multi-resolution diffusion contributes under 0.3% MAE; a DLinear backbone accounts for the rest. Demonstrated with a controlled with/without ablation across all four benchmarks.
 - **Designed a diffusion-free replacement** that is roughly 5 to 15x smaller, runs in a single forward pass, trains in minutes, and is more accurate on 3 of 4 benchmarks.
-- **Beat the published paper on ETTh1 univariate by 27%** with a 54K-parameter model.
+- **Beat the published paper on ETTh1 univariate by 27%** with a small three-model ensemble, and by 26% with a single 54K-parameter model.
 - **31 experiments, fully reconciled and queryable.** A bundled SQLite database (`experiment-db/`) makes every result, ablation, and ensemble breakdown one SQL query away.
 
 ![Diffusion contributes less than 0.3% to accuracy](figures/fig2_diffusion_ablation.png)
