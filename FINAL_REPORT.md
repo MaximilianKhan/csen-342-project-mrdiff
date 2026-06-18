@@ -1,15 +1,15 @@
-# CSEN 342: Deep Learning — Final Project Report
+# CSEN 342: Deep Learning, Final Project Report
 
 ## Replication and Improvement of "Multi-Resolution Diffusion Models for Time Series Forecasting" (mr-Diff) [1]
 
 **Maximilian Khan and Karthik Tamiledu**
-**CSEN-342, Winter 2026 — Santa Clara University**
+**CSEN-342, Winter 2026, Santa Clara University**
 
 ---
 
 ### Abstract
 
-This report covers our replication of mr-Diff [1] and our improvements built on top of it. We implemented the full architecture from scratch in PyTorch and evaluated it on ETTh1 and ETTm1 in both univariate and multivariate settings. Our best baseline achieves MAE 0.47–0.20 on globally-standardized data after resolving six critical issues in the paper's described method — a faithful implementation of which produces MAE equivalent to predicting zeros. Through 14 diffusion-focused experiments we established that the diffusion component contributes less than 0.3% to forecast accuracy, with the DLinear backbone doing all the work. This led us to replace the entire 843K-parameter diffusion pipeline with a Channel-Independent Decomposed Patch Transformer (54–182K parameters) that beats the baseline on 3 of 4 benchmarks, trains in minutes instead of 34 minutes, and requires only a single forward pass at inference. A 30-configuration hyperparameter sweep and heterogeneous ensembles further refined the results. We also explored overlapping patches, an iTransformer [15] variant for cross-variate attention, and a two-scale decomposition aligned to the dominant daily cycle in electricity data.
+This report covers our replication of mr-Diff [1] and our improvements built on top of it. We implemented the full architecture from scratch in PyTorch and evaluated it on ETTh1 and ETTm1 in both univariate and multivariate settings. Our best baseline achieves MAE 0.47–0.20 on globally-standardized data after resolving six critical issues in the paper's described method, a faithful implementation of which produces MAE equivalent to predicting zeros. Through 14 diffusion-focused experiments we established that the diffusion component contributes less than 0.3% to forecast accuracy, with the DLinear backbone doing all the work. This led us to replace the entire 843K-parameter diffusion pipeline with a Channel-Independent Decomposed Patch Transformer (54–182K parameters) that beats the baseline on 3 of 4 benchmarks, trains in minutes instead of 34 minutes, and requires only a single forward pass at inference. A 30-configuration hyperparameter sweep and heterogeneous ensembles further refined the results. We also explored overlapping patches, an iTransformer [15] variant for cross-variate attention, and a two-scale decomposition aligned to the dominant daily cycle in electricity data.
 
 ---
 
@@ -19,7 +19,7 @@ Time series forecasting problems arise across energy, finance, and healthcare, a
 
 mr-Diff [1] addresses this by decomposing the target into multiple resolution stages and training a separate diffusion network per stage, which maps onto how time series data actually behaves across different time scales. No source code was released by the authors.
 
-We had two goals. The first was to replicate the mr-Diff baseline on ETTh1 and ETTm1, understand where our results fell short of the paper's, and diagnose the causes. The second was to systematically improve upon the baseline through a 31-experiment campaign. Our central finding — that the diffusion component provides zero measurable benefit on small time series datasets — led to a paradigm shift from diffusion to attention-based forecasting that was not planned but emerged organically from the evidence.
+We had two goals. The first was to replicate the mr-Diff baseline on ETTh1 and ETTm1, understand where our results fell short of the paper's, and diagnose the causes. The second was to systematically improve upon the baseline through a 31-experiment campaign. Our central finding, that the diffusion component provides zero measurable benefit on small time series datasets, led to a paradigm shift from diffusion to attention-based forecasting that was not planned but emerged organically from the evidence.
 
 ---
 
@@ -51,7 +51,7 @@ All code is in Python 3.9 with PyTorch 2.7.1 and CUDA 11.8. Primary training ran
 
 ### 3.3 Network Architecture
 
-**Baseline (mr-Diff).** Our working configuration uses S=3 stages (not S=5 as in the paper — see Section 3.5), hidden dimension 64, embedding dimension 64, two encoder and two decoder layers, trend extraction kernels [25, 201], and dropout 0.3. Total parameters: 843K.
+**Baseline (mr-Diff).** Our working configuration uses S=3 stages (not S=5 as in the paper; see Section 3.5), hidden dimension 64, embedding dimension 64, two encoder and two decoder layers, trend extraction kernels [25, 201], and dropout 0.3. Total parameters: 843K.
 
 Each stage has three learned components. The conditioning network encodes the lookback window with a linear projection to hidden dimension 64 followed by 1D convolutional layers (kernel size 7, GroupNorm, LeakyReLU slope 0.1, dropout 0.3). The encoded history is projected from the lookback length to the forecast length, then fused with the coarser-stage output through a two-layer MLP.
 
@@ -79,7 +79,7 @@ The denoising network is a U-Net encoder-decoder. The encoder concatenates the n
 
 ### 3.5 Key Deviations from the Paper
 
-A faithful implementation of the paper's described architecture with S=5 stages, hidden dimension 256, and embedding dimension 128 produces a model with 17.5 million parameters trained on ~10,000 samples. This model collapses immediately — it learns to predict zeros, achieving MAE ~0.95 in RevIN-normalized space. Six deviations were required:
+A faithful implementation of the paper's described architecture with S=5 stages, hidden dimension 256, and embedding dimension 128 produces a model with 17.5 million parameters trained on ~10,000 samples. This model collapses immediately: it learns to predict zeros, achieving MAE ~0.95 in RevIN-normalized space. Six deviations were required:
 
 | # | Issue | Our Fix |
 |---|-------|---------|
@@ -96,9 +96,9 @@ Additional fixes: AMP disabled (corrupts alpha_bar precision in float16), stage-
 
 After 14 experiments confirmed that the diffusion component contributes nothing, Max replaced the entire 843K-parameter diffusion pipeline with a Channel-Independent Decomposed Patch Transformer (CI+Decomp). The architecture (described in Section 3.3) retains DLinear's trend/residual decomposition as an inductive bias but replaces diffusion with a lightweight TransformerEncoder operating over patches of each channel independently. This reduces model size to 54–182K parameters, training time from 34 minutes to 2–15 minutes, and inference from 60+ denoiser calls to a single forward pass.
 
-The addition of Attention Residuals [14] was a late but high-impact decision. On Monday morning (2026-03-17), the Kimi Moonshot team released their paper describing the mechanism and reporting strong results across multiple domains. Given the simplicity of the modification — a single learned query vector per layer, zero-initialized, adding only 192 parameters — it was integrated into the CI+Decomp architecture the same day it was published and evaluated immediately.
+The addition of Attention Residuals [14] was a late but high-impact decision. On Monday morning (2026-03-17), the Kimi Moonshot team released their paper describing the mechanism and reporting strong results across multiple domains. Given the simplicity of the modification (a single learned query vector per layer, zero-initialized, adding only 192 parameters), it was integrated into the CI+Decomp architecture the same day it was published and evaluated immediately.
 
-Standard transformer residuals add each layer's output to its input with fixed weight 1. Attention Residuals replace this with a learned query vector per layer that computes softmax attention over all prior layer outputs (embedding + all preceding layers), letting each layer pull from whichever earlier representation is most useful. The zero initialization means the model starts behaving identically to a standard transformer and only learns to deviate when it helps. This targeted mechanism proved particularly effective on ETTh1 Multi — our hardest benchmark — where the short 336-step lookback means each layer's contribution matters more and the ability to skip uninformative intermediate representations pays off. For the ETTh1 Multi ensemble, one of three members uses AttnRes; the others use standard residuals with different hyperparameters, providing the architectural diversity that makes ensembling effective.
+Standard transformer residuals add each layer's output to its input with fixed weight 1. Attention Residuals replace this with a learned query vector per layer that computes softmax attention over all prior layer outputs (embedding + all preceding layers), letting each layer pull from whichever earlier representation is most useful. The zero initialization means the model starts behaving identically to a standard transformer and only learns to deviate when it helps. This targeted mechanism proved particularly effective on ETTh1 Multi, our hardest benchmark, where the short 336-step lookback means each layer's contribution matters more and the ability to skip uninformative intermediate representations pays off. For the ETTh1 Multi ensemble, one of three members uses AttnRes; the others use standard residuals with different hyperparameters, providing the architectural diversity that makes ensembling effective.
 
 A 30-configuration hyperparameter sweep over the CI+Decomp architecture (patch size, d_model, depth, dropout, learning rate, trend kernel, weight decay) found per-benchmark optimal configurations and set 3 of 4 all-time records (Section 4.5).
 
@@ -114,7 +114,7 @@ Second, the iTransformer [15]: rather than treating time patches as tokens, each
 
 The single-kernel trend extraction gives the transformer one boundary between trend and residual. Two kernels produce three bands: coarse trend, mid-band (fine trend minus coarse trend), and fine residual. Each band goes through the same shared transformer with its own output head; the three forecasts are summed.
 
-The coarse kernel for ETTm1 is set to 96, which at 15-minute resolution is exactly 24 hours — the dominant cycle in electricity load data. For ETTh1 the coarse kernel is 24 (one day in hourly data). The transformer itself is unchanged; the only additions are two extra pairs of output head weights, roughly 6K parameters.
+The coarse kernel for ETTm1 is set to 96, which at 15-minute resolution is exactly 24 hours, the dominant cycle in electricity load data. For ETTh1 the coarse kernel is 24 (one day in hourly data). The transformer itself is unchanged; the only additions are two extra pairs of output head weights, roughly 6K parameters.
 
 ---
 
@@ -166,13 +166,13 @@ We exhaustively attempted to make diffusion contribute through 10 experiments: j
 
 | Exp | Architecture | Params | ETTh1 M | ETTh1 U | ETTm1 M | ETTm1 U | Time |
 |-----|-------------|--------|---------|---------|---------|---------|------|
-| — | DLinear Baseline | 113K | 0.4744 | 0.2535 | 0.4204 | 0.2011 | ~34m |
+|, | DLinear Baseline | 113K | 0.4744 | 0.2535 | 0.4204 | 0.2011 | ~34m |
 | 15 | Tiny Transformer | 295K–7.8M | 0.5607 | 0.2538 | 0.5514 | 0.2002 | 4.7m |
 | 16 | CI Transformer | 73–91K | 0.5485 | 0.2741 | 0.4293 | **0.1885** | 8.6m |
 | 17 | CI + Decomp | 77–109K | 0.5101 | 0.2580 | **0.4159** | 0.2011 | 11.9m |
 | 18 | HP Sweep (30 configs) | 54–182K | 0.4880 | **0.2514** | **0.4094** | **0.1881** | ~2.5h |
 
-Exp 15 proved a 2-layer transformer matches DLinear on univariate with 7× speedup. Exp 16 introduced channel independence, setting a record on ETTm1 Uni (0.1885) — a 73K-param model with no diffusion, trained in 2.5 minutes. Exp 17 added trend/residual decomposition, setting the first-ever record on ETTm1 Multi (0.4159). Exp 18 conducted a 30-configuration hyperparameter sweep across patch size, d_model, depth, dropout, learning rate, trend kernel, and weight decay, setting 3 of 4 all-time records.
+Exp 15 proved a 2-layer transformer matches DLinear on univariate with 7× speedup. Exp 16 introduced channel independence, setting a record on ETTm1 Uni (0.1885), a 73K-param model with no diffusion, trained in 2.5 minutes. Exp 17 added trend/residual decomposition, setting the first-ever record on ETTm1 Multi (0.4159). Exp 18 conducted a 30-configuration hyperparameter sweep across patch size, d_model, depth, dropout, learning rate, trend kernel, and weight decay, setting 3 of 4 all-time records.
 
 ### 4.6 Refinement and Ensemble Results (Experiments 19–27)
 
@@ -254,7 +254,7 @@ All improvements start from the same finding: the diffusion component adds nothi
 
 Several decisions diverged from [1]. We used residual decomposition rather than the cumulative approach described in the paper, because cumulative decomposition produced MAE of 6–32 across all four configurations due to error cascading across stages at inference. Future mixup used random projection weights rather than learned weights, because learned weights widened the train-test gap. For the baseline we used only the finest stage's output rather than summing all stages; stage summation requires clean per-stage samples, and DDPM [12] produced samples too noisy for the composition to work.
 
-Moving from diffusion to a pure transformer was not planned. It followed from 14 experiments where the diffusion residuals stayed near zero regardless of what was changed. Channel independence was chosen over cross-channel attention because the data doesn't support learning cross-channel dynamics at this scale — every cross-channel experiment degraded multivariate performance.
+Moving from diffusion to a pure transformer was not planned. It followed from 14 experiments where the diffusion residuals stayed near zero regardless of what was changed. Channel independence was chosen over cross-channel attention because the data doesn't support learning cross-channel dynamics at this scale, every cross-channel experiment degraded multivariate performance.
 
 ### 6.2 What Worked Well
 
@@ -281,11 +281,11 @@ The paper [1] leaves several implementation-critical details unspecified: whethe
 All experiments were run on an NVIDIA RTX 5090 GPU with Python 3.9 and PyTorch 2.7.1. Training configurations, model architectures, and hyperparameters are fully specified in YAML config files and documented per-experiment. The ETT dataset is publicly available [16].
 
 Key files for reproduction:
-- `final-final-form/baseline/src/` — Baseline mr-Diff model implementation
-- `final-final-form/improvement/src/` — CI+Decomp Transformer implementation with all variants
-- `final-final-form/baseline/configs/small.yaml` — Baseline configuration
-- `final-final-form/ALL_EXPERIMENT_RESULTS.md` — Complete 31-experiment log with all metrics
-- `final-final-form/improvement/sweep.py` — 30-config hyperparameter sweep driver (raw logs archived under `archive/working-dirs/final-form/exp18_hyperparam_sweep/`)
+- `final-final-form/baseline/src/`, Baseline mr-Diff model implementation
+- `final-final-form/improvement/src/`, CI+Decomp Transformer implementation with all variants
+- `final-final-form/baseline/configs/small.yaml`, Baseline configuration
+- `final-final-form/ALL_EXPERIMENT_RESULTS.md`, Complete 31-experiment log with all metrics
+- `final-final-form/improvement/sweep.py`, 30-config hyperparameter sweep driver (raw logs archived under `archive/working-dirs/final-form/exp18_hyperparam_sweep/`)
 
 ---
 

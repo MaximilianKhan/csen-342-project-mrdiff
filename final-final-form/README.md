@@ -102,10 +102,10 @@ cd improvement && python train_single_overlapping_patches.py
    GroupNorm, residual decomposition, random-projection mixup). Working baseline MAE 0.47–0.20.
 2. **Exps 1–13**: diffusion-focused attempts (self-conditioning, v-prediction, cosine/ANT
    schedules, contrastive loss, MG-TSD, channel-aware denoising, deep AttnRes backbones).
-   All confirm diffusion is cosmetic — it changes MAE by < 0.3%.
+   All confirm diffusion is cosmetic: it changes MAE by < 0.3%.
 3. **Exps 14–17**: CI+Decomp Transformer replaces diffusion (MAE 0.41–0.55). First all-time
    records on ETTm1 Uni (0.1885) and ETTm1 Multi (0.4159).
-4. **Exp 18**: 30-config hyperparameter sweep — sets 3 of 4 benchmark records.
+4. **Exp 18**: 30-config hyperparameter sweep, sets 3 of 4 benchmark records.
 5. **Exps 19–27**: refinements (extended training, channel mixing, augmentation, frequency
    branch), Attention Residuals integration (Exp 26), and heterogeneous 3-model ensembles (Exp 27).
 6. **Exps 28–29**: overlapping patches and an iTransformer ensemble (cross-variate attention).
