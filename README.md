@@ -18,7 +18,7 @@ on these datasets: a DLinear backbone does all the work. That led us to replace 
 (54–182K parameters) that trains in minutes, runs in a single forward pass, and beats the
 baseline on 3 of 4 benchmarks. Full numbers, tables, and analysis live in
 **[`FINAL_REPORT.md`](FINAL_REPORT.md)** and
-**[`final-final-form/ALL_EXPERIMENT_RESULTS.md`](final-final-form/ALL_EXPERIMENT_RESULTS.md)**.
+**[`code/ALL_EXPERIMENT_RESULTS.md`](code/ALL_EXPERIMENT_RESULTS.md)**.
 
 ## Headline results
 
@@ -43,19 +43,19 @@ breakdown.
 | Path | What it is |
 |------|------------|
 | **[`FINAL_REPORT.md`](FINAL_REPORT.md)** | The final project report: abstract, design, all experiments, result tables, references. **Start here.** |
-| **`final-final-form/`** | Canonical, runnable code submission (see below). |
-| **`final-final-form/ALL_EXPERIMENT_RESULTS.md`** | The complete experiment log: baseline technical changes, Experiments 1–31, and the AdaLN/ANT variants. The source of truth for every number. |
-| `graphs-and-charts/` | Report figures and architecture diagrams, plus `generate_all.py` to regenerate them. |
-| `karthic-interim-report.pdf` | The earlier interim report. |
-| `ICLR-2024-...Paper-Conference.pdf` | The original mr-Diff paper we replicated. |
-| `description.txt` | The assignment specification. |
-| `dataset-link.txt` | Link to the ETT dataset. |
+| **`code/`** | Canonical, runnable code submission (see below). |
+| **`code/ALL_EXPERIMENT_RESULTS.md`** | The complete experiment log: baseline technical changes, Experiments 1–31, and the AdaLN/ANT variants. The source of truth for every number. |
+| `figures/` | Report figures and architecture diagrams, plus `generate_all.py` to regenerate them. |
+| `reference/interim-report.pdf` | The earlier interim report. |
+| `reference/mr-diff-iclr2024.pdf` | The original mr-Diff paper we replicated. |
+| `reference/assignment.txt` | The assignment specification. |
+| `reference/dataset-link.txt` | Link to the ETT dataset. |
 | `archive/` | Project history: superseded code, intermediate submission snapshots, and working notes. Kept for provenance; not needed to run or read anything current. |
 
-### Inside `final-final-form/`
+### Inside `code/`
 
 ```
-final-final-form/
+code/
 ├── requirements.txt             # Python dependencies
 ├── download_data.py             # ETT dataset downloader
 ├── ALL_EXPERIMENT_RESULTS.md    # Full experiment log (Exps 1–31 + AdaLN/ANT)
@@ -75,7 +75,7 @@ final-final-form/
 ## Quick start
 
 ```bash
-cd final-final-form
+cd code
 pip install -r requirements.txt
 python download_data.py
 
@@ -103,6 +103,6 @@ cd ../improvement && python train_single_overlapping_patches.py
 
 - `intermediate-submissions/`: `submission/`, `submission_itransformer/`, `submission_twoscale/` (superseded snapshots; their `REPORT.md` files were byte-identical).
 - `working-dirs/`: `final-form/` (per-experiment working dir) and `analysis/`.
-- `root-baseline-code/`: original root-level baseline code now consolidated into `final-final-form/baseline/`.
+- `root-baseline-code/`: original root-level baseline code now consolidated into `code/baseline/`.
 - `scripts/`: one-off diagnostics, figure/table generators, and `boom.ipynb`.
 - `intermediate-docs/`: working notes (`TECHNICAL_CHANGES.md`, `IMPROVEMENTS.md`, `DEADEND_REALITY.md`) and the old baseline-only README.

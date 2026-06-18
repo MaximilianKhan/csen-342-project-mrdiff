@@ -178,7 +178,7 @@ ETTm1 Uni   & 0.2008 & 0.2011 & +0.0003 \\
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{../graphs-and-charts/fig2_diffusion_ablation.png}
+\includegraphics[width=\columnwidth]{../figures/fig2_diffusion_ablation.png}
 \caption{Direct prediction versus direct-plus-diffusion. The diffusion apparatus changes MAE by less than 0.3\% on every benchmark.}
 \label{fig:ablation}
 \end{figure}
@@ -300,14 +300,14 @@ ETTm1 Uni   & \textbf{0.1865} & Two-scale single & +24.3\% \\
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{../graphs-and-charts/fig8_final_vs_paper.png}
+\includegraphics[width=\columnwidth]{../figures/fig8_final_vs_paper.png}
 \caption{Our best result on each benchmark versus the paper's reported MAE. We beat the paper on ETTh1 Univariate and close most of the gap elsewhere with far smaller models.}
 \label{fig:final}
 \end{figure}
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\columnwidth]{../graphs-and-charts/fig3_architecture_progression.png}
+\includegraphics[width=\columnwidth]{../figures/fig3_architecture_progression.png}
 \caption{Architecture progression from the DLinear baseline through the channel-independent decomposed transformer and the sweep.}
 \label{fig:progression}
 \end{figure}
@@ -329,7 +329,7 @@ Moving from diffusion to a pure transformer was not planned. It followed from 14
 The paper~\cite{mrdiff} leaves several implementation-critical details unspecified: whether decomposition is residual or cumulative, whether the mixup projection is learned or random, the exact normalization layer in the denoiser, model sizing that prevents collapse, and the metric computation space. The absence of released code meant every architectural decision required empirical validation from scratch.
 
 \section{Reproducibility}
-All experiments were run on an NVIDIA RTX 5090 GPU with Python 3.9 and PyTorch 2.7.1. Training configurations, model architectures, and hyperparameters are fully specified in YAML config files and documented per experiment. The ETT dataset is publicly available~\cite{informer}. The baseline model lives under \texttt{final-final-form/baseline/}, the transformer variants under \texttt{final-final-form/improvement/}, and the complete 31-experiment log with every metric in \texttt{final-final-form/ALL\_EXPERIMENT\_RESULTS.md}. A structured SQLite database of all results is provided under \texttt{experiment-db/} for ablation and exploration.
+All experiments were run on an NVIDIA RTX 5090 GPU with Python 3.9 and PyTorch 2.7.1. Training configurations, model architectures, and hyperparameters are fully specified in YAML config files and documented per experiment. The ETT dataset is publicly available~\cite{informer}. The baseline model lives under \texttt{code/baseline/}, the transformer variants under \texttt{code/improvement/}, and the complete 31-experiment log with every metric in \texttt{code/ALL\_EXPERIMENT\_RESULTS.md}. A structured SQLite database of all results is provided under \texttt{experiment-db/} for ablation and exploration.
 
 \section{Conclusion}
 Our baseline achieves MAE 0.47 to 0.20 versus the paper's 0.42 to 0.15. The gap comes from a train-test conditioning mismatch across stages, made worse by DDPM's sample quality being insufficient for stage composition. The combined improvements reach ETTh1 Multi 0.4773, ETTh1 Uni 0.2471, ETTm1 Multi 0.4081, and ETTm1 Uni 0.1865, two of which beat the paper. The 843K-parameter diffusion model is replaced by transformers of 54 to 182K parameters that train faster and perform better on three of four benchmarks. The two findings that drove this outcome are that diffusion contributes nothing measurable on small time series datasets, and that channel independence multiplies the effective training set size by $D$, which is as valuable as any architectural innovation.

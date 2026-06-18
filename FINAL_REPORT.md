@@ -283,11 +283,11 @@ The paper [1] leaves several implementation-critical details unspecified: whethe
 All experiments were run on an NVIDIA RTX 5090 GPU with Python 3.9 and PyTorch 2.7.1. Training configurations, model architectures, and hyperparameters are fully specified in YAML config files and documented per-experiment. The ETT dataset is publicly available [16].
 
 Key files for reproduction:
-- `final-final-form/baseline/src/`, Baseline mr-Diff model implementation
-- `final-final-form/improvement/src/`, CI+Decomp Transformer implementation with all variants
-- `final-final-form/baseline/configs/small.yaml`, Baseline configuration
-- `final-final-form/ALL_EXPERIMENT_RESULTS.md`, Complete 31-experiment log with all metrics
-- `final-final-form/improvement/sweep.py`, 30-config hyperparameter sweep driver (raw logs archived under `archive/working-dirs/final-form/exp18_hyperparam_sweep/`)
+- `code/baseline/src/`, Baseline mr-Diff model implementation
+- `code/improvement/src/`, CI+Decomp Transformer implementation with all variants
+- `code/baseline/configs/small.yaml`, Baseline configuration
+- `code/ALL_EXPERIMENT_RESULTS.md`, Complete 31-experiment log with all metrics
+- `code/improvement/sweep.py`, 30-config hyperparameter sweep driver (raw logs archived under `archive/working-dirs/final-form/exp18_hyperparam_sweep/`)
 
 ---
 

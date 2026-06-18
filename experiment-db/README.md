@@ -14,7 +14,7 @@ comparison, and state-space exploration.
 Regenerate after editing the data: `python3 experiment-db/build_db.py`.
 
 All MAE/MSE values are on globally-standardized data (the paper's metric space),
-transcribed from `final-final-form/ALL_EXPERIMENT_RESULTS.md`.
+transcribed from `code/ALL_EXPERIMENT_RESULTS.md`.
 
 ## Schema
 

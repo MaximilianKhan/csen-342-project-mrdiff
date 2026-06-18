@@ -7,7 +7,7 @@ Baseline replication and improvement of "Multi-Resolution Diffusion Models for T
 ## Directory Structure
 
 ```
-final-final-form/
+code/
 ├── requirements.txt             # Python dependencies
 ├── download_data.py             # ETT dataset downloader
 │
