@@ -232,6 +232,8 @@ New record on ETTm1 Multi ensemble (0.4081). Single-model ETTm1 Uni of 0.1865 is
 
 Best results beat the DLinear baseline on 3 of 4 benchmarks. ETTh1 Uni at 0.2471 beats the paper's reported 0.34 by 27%. All achieved with 54–182K parameter transformers, no diffusion, training in minutes.
 
+For completeness, the single lowest ETTh1 Multi MAE recorded over the entire campaign was 0.4719, from the diffusion-based self-conditioning model (Exp 2, Section 4.4). We report the iTransformer ensemble (0.4773) as the headline result on that benchmark because it is the architecture we advocate: diffusion-free, an order of magnitude smaller, and a single forward pass at inference. The 0.0054 gap on this one benchmark does not change any conclusion. The diffusion result is preserved in full in the experiment database (`experiment-db/`).
+
 ---
 
 ## 5. Analysis

@@ -184,7 +184,7 @@ ETTm1 Uni   & 0.2008 & 0.2011 & +0.0003 \\
 \end{figure}
 
 \subsection{Diffusion Improvement Experiments}
-We attempted to make diffusion contribute through 13 experiments on the diffusion pipeline (Table~\ref{tab:diffusion}): joint end-to-end training, self-conditioning, cosine and adaptive noise schedules, v-prediction, contrastive and multi-granularity auxiliary losses, channel-aware denoising, a PatchTST-style conditioning encoder, x0-prediction with decomposition, and deep backbones with Attention Residuals. None achieved more than a marginal improvement. The best diffusion result (Exp~10, 0.2508 on ETTh1 Uni) was slower (55 min) and no better overall. Every change that helped univariate hurt multivariate, the defining pattern of the diffusion campaign.
+We attempted to make diffusion contribute through thirteen cumulative experiments on the diffusion pipeline (Table~\ref{tab:diffusion}): joint end-to-end training, self-conditioning, cosine and adaptive noise schedules, v-prediction, contrastive and multi-granularity auxiliary losses, channel-aware denoising, a PatchTST-style conditioning encoder, x0-prediction with decomposition, and deep backbones with Attention Residuals. A fourteenth experiment, a multi-scale AttnRes backbone, was stopped early after the same multivariate regression, bringing the diffusion-era total to fourteen. None achieved more than a marginal improvement. The best diffusion result (Exp~10, 0.2508 on ETTh1 Uni) was slower (55 min) and no better overall. Every change that helped univariate hurt multivariate, the defining pattern of the diffusion campaign.
 
 \begin{table*}[t]
 \caption{Diffusion improvement campaign (MAE; built cumulatively on Exp 2 self-conditioning). Best per column in bold.}
@@ -256,8 +256,30 @@ ETTm1 Uni   & 0.2011 & 0.1881 & 0.1911 & \textbf{0.1865} \\
 \end{tabular}
 \end{table}
 
+The ensembles win precisely because their members make uncorrelated errors. Table~\ref{tab:members} shows the member breakdown for the three record-setting ensembles: in every case the ensemble MAE falls below all three of its individual members, which is the signature of variance reduction from architectural diversity rather than any single strong model.
+
+\begin{table}[t]
+\caption{Member breakdown for the record-setting ensembles. Each ensemble beats all three of its members.}
+\label{tab:members}
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+Benchmark (exp) & Member 1 & Member 2 & Member 3 & Ensemble \\
+\midrule
+ETTh1 Multi (29) & 0.4878 & 0.4836 & 0.4915 & \textbf{0.4773} \\
+ETTh1 Uni (29)   & 0.2485 & 0.2507 & 0.2593 & \textbf{0.2471} \\
+ETTm1 Multi (31) & 0.4126 & 0.4110 & 0.4200 & \textbf{0.4081} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent Member 1 in the Exp~29 rows is the iTransformer (cross-variate attention); the other members are channel-independent models attending over time. In the Exp~31 row, member 1 is the two-scale model. The architectural orthogonality is what makes the averaging pay off.
+
 \subsection{Final Results}
 Table~\ref{tab:final} collects the best result on each benchmark across all improvements, and Fig.~\ref{fig:final} compares them to the paper. The best results beat the DLinear baseline on three of four benchmarks. ETTh1 Univariate at 0.2471 beats the paper's reported 0.34 by 27\%. All were achieved with 54 to 182K-parameter transformers, no diffusion, training in minutes.
+
+For completeness, the single lowest ETTh1 Multivariate MAE recorded over the entire campaign was 0.4719, from the diffusion-based self-conditioning model (Exp~2, Table~\ref{tab:diffusion}). We report the transformer ensemble (0.4773) as our headline result on that benchmark because it is the architecture we advocate: diffusion-free, an order of magnitude smaller, and a single forward pass at inference. The 0.0054 gap on this one benchmark does not change any conclusion, and the diffusion result is preserved in full in our experiment database.
 
 \begin{table}[t]
 \caption{Final all-time best results across all improvements (MAE).}
