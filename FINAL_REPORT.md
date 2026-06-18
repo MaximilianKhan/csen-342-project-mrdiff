@@ -297,7 +297,7 @@ Key files for reproduction:
 
 Our baseline achieves MAE 0.47–0.20 versus the paper's 0.42–0.15. The gap comes from a train-test conditioning mismatch across stages, made worse by DDPM's [12] sample quality being insufficient for stage composition. Testing each paper-described component individually degraded performance in our setup, which suggests the multi-resolution framework depends on DPM-Solver [13] in a way [1] does not make clear.
 
-The combined improvements reach ETTh1 Multi 0.4773, ETTh1 Uni 0.2471, ETTm1 Multi 0.4081, ETTm1 Uni 0.1865. Two of those beat the paper's reported results. The 843K-parameter diffusion model is replaced by transformers of 54–182K parameters that train faster and perform better on three of four benchmarks. The two findings that drove this outcome are that diffusion contributes nothing measurable on small time series datasets, and that channel independence multiplies the effective training set size by D, which is as valuable as any architectural innovation.
+The combined improvements reach ETTh1 Multi 0.4773, ETTh1 Uni 0.2471, ETTm1 Multi 0.4081, ETTm1 Uni 0.1865. Two of those beat the paper's reported results. The 843K-parameter diffusion model is replaced by transformers of 54–182K parameters that train faster and perform better on three of four benchmarks. For deployment no ensemble is required: a single 94K-parameter two-scale network set the ETTm1 univariate record, and single CI+Decomp models are competitive on the rest. The two findings that drove this outcome are that diffusion contributes nothing measurable on small time series datasets, and that channel independence multiplies the effective training set size by D, which is as valuable as any architectural innovation.
 
 ---
 
