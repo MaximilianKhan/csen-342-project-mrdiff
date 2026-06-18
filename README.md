@@ -2,7 +2,7 @@
 
 *A from-scratch reproduction of an ICLR 2024 time-series diffusion model, a reproducibility finding that its core mechanism moves accuracy by less than 0.3%, and a diffusion-free replacement up to 15x smaller that beats our faithful baseline on 3 of 4 benchmarks and the published paper on its hardest univariate task.*
 
-**Maximilian Khan & Karthik Tamiledu** · CSEN-342 Deep Learning · Santa Clara University · Winter 2026
+**Maximilian Khan & Karthik Tamil** · CSEN-342 Deep Learning · Santa Clara University · Winter 2026
 
 Replicating and improving **"Multi-Resolution Diffusion Models for Time Series Forecasting"** (mr-Diff, ICLR 2024) by Lifeng Shen, Weiyu Chen, and James T. Kwok, on the ETTh1 and ETTm1 benchmarks in both univariate and multivariate settings.
 
