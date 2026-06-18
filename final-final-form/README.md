@@ -68,12 +68,19 @@ final-final-form/
 
 ## Key Results
 
-| Benchmark | Paper MAE | Baseline MAE | Best MAE | Model |
-|-----------|-----------|-------------|----------|-------|
-| ETTh1 Multi | 0.422 | 0.922 | 0.379 | CI+Decomp+AttnRes+Overlap |
-| ETTh1 Uni | 0.340 | 1.007 | 0.488 | Ensemble (3 models) |
-| ETTm1 Multi | 0.373 | 0.972 | 0.299 | CI+Decomp+AttnRes+Overlap |
-| ETTm1 Uni | 0.149 | 0.963 | 0.307 | CI+Decomp+AttnRes+Overlap |
+MAE on globally-standardized data (the paper's metric space). Lower is better.
+
+| Benchmark | Paper MAE | Baseline MAE (mr-Diff) | Best MAE | Best architecture |
+|-----------|----------:|-----------------------:|---------:|-------------------|
+| ETTh1 Multi | 0.42 | 0.4744 | **0.4773** | Exp 29 iTransformer ensemble |
+| ETTh1 Uni   | 0.34 | 0.2535 | **0.2471** | Exp 29 iTransformer ensemble |
+| ETTm1 Multi | 0.37 | 0.4204 | **0.4081** | Exp 31 two-scale ensemble |
+| ETTm1 Uni   | 0.15 | 0.2011 | **0.1865** | Exp 31 two-scale single |
+
+The baseline is our mr-Diff replication (843K params). Best results use 54–182K-parameter
+transformers with no diffusion, and beat the baseline on 3 of 4 benchmarks (and the paper on
+ETTh1 Uni by 27%). See [`ALL_EXPERIMENT_RESULTS.md`](ALL_EXPERIMENT_RESULTS.md) for the full
+log behind every number.
 
 ## Quick Start
 
@@ -90,11 +97,20 @@ cd improvement && python train_single_overlapping_patches.py
 
 ## Experiment Progression
 
-1. **Exps 1-5**: Baseline mr-Diff replication (MAE 0.92-1.01, 2-6x gap)
-2. **Exps 6-9**: Diffusion ablation — discovered DLinear does all the work
-3. **Exps 10-13**: Normalization and conditioning fixes
-4. **Exps 14-17**: CI+Decomp Transformer replaces diffusion (MAE 0.41-0.58)
-5. **Exp 18**: 30-config hyperparameter sweep
-6. **Exps 19-25**: Overlapping patches, iTransformer, split heads, two-scale
-7. **Exp 26**: Attention Residuals integration (MAE 0.299-0.488)
-8. **Exp 27**: Heterogeneous ensemble (3 diverse architectures)
+1. **Baseline technical changes**: six deviations from the paper required to get a model that
+   trains at all (downsizing 17.5M→843K params, global-std metrics, DLinear backbone,
+   GroupNorm, residual decomposition, random-projection mixup). Working baseline MAE 0.47–0.20.
+2. **Exps 1–13**: diffusion-focused attempts (self-conditioning, v-prediction, cosine/ANT
+   schedules, contrastive loss, MG-TSD, channel-aware denoising, deep AttnRes backbones).
+   All confirm diffusion is cosmetic — it changes MAE by < 0.3%.
+3. **Exps 14–17**: CI+Decomp Transformer replaces diffusion (MAE 0.41–0.55). First all-time
+   records on ETTm1 Uni (0.1885) and ETTm1 Multi (0.4159).
+4. **Exp 18**: 30-config hyperparameter sweep — sets 3 of 4 benchmark records.
+5. **Exps 19–27**: refinements (extended training, channel mixing, augmentation, frequency
+   branch), Attention Residuals integration (Exp 26), and heterogeneous 3-model ensembles (Exp 27).
+6. **Exps 28–29**: overlapping patches and an iTransformer ensemble (cross-variate attention).
+   New records on both ETTh1 benchmarks (0.4773 Multi, 0.2471 Uni).
+7. **Exp 31**: two-scale decomposition aligned to the daily cycle in ETTm1. New records on
+   ETTm1 Multi (0.4081) and ETTm1 Uni (0.1865).
+8. **AdaLN / ANT**: two baseline-diffusion variants explored in parallel (`baseline/exp_adaln`,
+   `baseline/exp_ant`).

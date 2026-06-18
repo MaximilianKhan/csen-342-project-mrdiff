@@ -19,7 +19,7 @@ Time series forecasting problems arise across energy, finance, and healthcare, a
 
 mr-Diff [1] addresses this by decomposing the target into multiple resolution stages and training a separate diffusion network per stage, which maps onto how time series data actually behaves across different time scales. No source code was released by the authors.
 
-We had two goals. The first was to replicate the mr-Diff baseline on ETTh1 and ETTm1, understand where our results fell short of the paper's, and diagnose the causes. The second was to systematically improve upon the baseline through a 27-experiment campaign. Our central finding — that the diffusion component provides zero measurable benefit on small time series datasets — led to a paradigm shift from diffusion to attention-based forecasting that was not planned but emerged organically from the evidence.
+We had two goals. The first was to replicate the mr-Diff baseline on ETTh1 and ETTm1, understand where our results fell short of the paper's, and diagnose the causes. The second was to systematically improve upon the baseline through a 31-experiment campaign. Our central finding — that the diffusion component provides zero measurable benefit on small time series datasets — led to a paradigm shift from diffusion to attention-based forecasting that was not planned but emerged organically from the evidence.
 
 ---
 
@@ -122,7 +122,7 @@ The coarse kernel for ETTm1 is set to 96, which at 15-minute resolution is exact
 
 ### 4.1 Datasets
 
-We evaluated on two datasets from the ETT benchmark [16]. ETTh1 has 7 variables and 17,420 hourly observations, with lookback 336 and forecast horizon 168. ETTm1 has 7 variables and 69,680 observations at 15-minute intervals, with lookback 1440 and forecast horizon 192. Each was split chronologically 60/20/20. For univariate experiments we used the OT (oil temperature) column. Per-window instance normalization (RevIN [4]) was applied during training, and all metrics are reported in globally-standardized space to match the paper's evaluation protocol.
+We evaluated on two datasets from the ETT benchmark [16]. ETTh1 has 7 variables and 17,420 hourly observations, with lookback 336 and forecast horizon 168. ETTm1 has 7 variables and 69,680 observations at 15-minute intervals, with lookback 1440 and forecast horizon 192. Each was split chronologically 60/20/20. For univariate experiments we used the OT (oil temperature) column. Per-window instance normalization (RevIN [17]) was applied during training, and all metrics are reported in globally-standardized space to match the paper's evaluation protocol.
 
 ### 4.2 Methodology
 
@@ -281,11 +281,11 @@ The paper [1] leaves several implementation-critical details unspecified: whethe
 All experiments were run on an NVIDIA RTX 5090 GPU with Python 3.9 and PyTorch 2.7.1. Training configurations, model architectures, and hyperparameters are fully specified in YAML config files and documented per-experiment. The ETT dataset is publicly available [16].
 
 Key files for reproduction:
-- `src/` — Baseline mr-Diff model implementation
-- `submission/src/` — CI+Decomp Transformer implementation with all variants
-- `configs/small.yaml` — Baseline configuration
-- `final-form/EXPERIMENT_RESULTS.md` — Complete 27-experiment log with all metrics
-- `final-form/exp18_hyperparam_sweep/` — Sweep configurations and training logs
+- `final-final-form/baseline/src/` — Baseline mr-Diff model implementation
+- `final-final-form/improvement/src/` — CI+Decomp Transformer implementation with all variants
+- `final-final-form/baseline/configs/small.yaml` — Baseline configuration
+- `final-final-form/ALL_EXPERIMENT_RESULTS.md` — Complete 31-experiment log with all metrics
+- `final-final-form/improvement/sweep.py` — 30-config hyperparameter sweep driver (raw logs archived under `archive/working-dirs/final-form/exp18_hyperparam_sweep/`)
 
 ---
 
@@ -339,6 +339,6 @@ The combined improvements reach ETTh1 Multi 0.4773, ETTh1 Uni 0.2471, ETTm1 Mult
 
 | Team Member | Contribution | Percentage |
 |-------------|-------------|------------|
-| Maximilian Khan | Baseline implementation from scratch, 27-experiment improvement campaign, CI+Decomp Transformer architecture design, hyperparameter sweep, AttnRes integration, ensemble design, report writing | 50% |
+| Maximilian Khan | Baseline implementation from scratch, 31-experiment improvement campaign, CI+Decomp Transformer architecture design, hyperparameter sweep, AttnRes integration, ensemble design, report writing | 50% |
 | Karthik Tamiledu | Overlapping patches implementation, iTransformer integration, two-scale decomposition, SLURM cluster scripts, experiment documentation | 50% |
 | **Total** | | **100%** |

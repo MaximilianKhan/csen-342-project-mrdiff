@@ -24,7 +24,7 @@ These results required **six fundamental deviations** from the paper's described
 
 ### What the paper describes
 
-The paper (Li et al., "Multi-Resolution Diffusion Models for Time Series Forecasting," ICLR 2024) describes a pure diffusion model with S=5 resolution stages, each with its own encoder-decoder denoising network, using 100-step DDPM sampling. The model learns to denoise at each resolution level, and predictions from all stages are summed to produce the final forecast.
+The paper (Shen, Chen, and Kwok, "Multi-Resolution Diffusion Models for Time Series Forecasting," ICLR 2024) describes a pure diffusion model with S=5 resolution stages, each with its own encoder-decoder denoising network, using 100-step DDPM sampling. The model learns to denoise at each resolution level, and predictions from all stages are summed to produce the final forecast.
 
 ### What actually happens
 
@@ -1198,9 +1198,7 @@ Previous bests for reference:
 |---|---|---|---|---|
 | Paper | 0.42 | 0.34 | 0.37 | 0.15 |
 | Submission (Exp 27) | 0.4829 | 0.2505 | 0.4094 | 0.1881 |
-| Exp 29 ensemble | 0.4773 | **0.2471** | 0.4103 | 0.1911 |
-| Exp 30 ensemble | **0.4761** | 0.2611 | 0.4102 | 0.1919 |
-| Exp 30 single best | 0.4852 | 0.2551 | 0.4394 (iTransformer) | **0.1869** |
+| Exp 29 ensemble | **0.4773** | **0.2471** | 0.4103 | 0.1911 |
 
 ---
 
@@ -1215,8 +1213,8 @@ Previous bests for reference:
 
 ETTm1 Multi at 0.4088 beats the submission record of 0.4094 as a single
 model — the first time a single model has done so on that benchmark.
-ETTm1 Uni at 0.1865 is a new all-time best, beating Exp 30's single-model
-record of 0.1869. ETTh1 results are not impacted since two-scale was not
+ETTm1 Uni at 0.1865 is a new all-time best — the best single-model result
+on that benchmark. ETTh1 results are not impacted since two-scale was not
 used there — those used the same configs as previous experiments.
 
 ---
@@ -1232,9 +1230,10 @@ used there — those used the same configs as previous experiments.
 | 3 | CI base (d=32) | 54,322 | 0.4957 |
 | **Ensemble** | | | **0.4858** |
 
-Regressed from Exp 30's record of 0.4761. Individual members were
-weaker than in Exp 30 (best here 0.4882 vs 0.4837 in Exp 30), which
-lifted the ensemble. The ETTh1 Multi record remains with Exp 30.
+Regressed from the Exp 29 iTransformer ensemble record of 0.4773.
+Individual members here (best 0.4882) were weaker than the Exp 29
+members, which lifted the ensemble. The ETTh1 Multi record remains
+with the Exp 29 iTransformer ensemble.
 
 ### ETTh1 Uni (MAE: 0.2574)
 
@@ -1258,12 +1257,12 @@ above the single-model best. The ETTh1 Uni record remains with Exp 29.
 | 3 | CI base | 182,210 | 0.4200 |
 | **Ensemble** | | | **0.4081** |
 
-New all-time best, beating the submission's 0.4094 and Exp 30's 0.4102.
-The two-scale model (0.4126) was individually weaker than both CI base
-members (0.4110, 0.4200) but its different decomposition strategy means
-its errors are partially uncorrelated with theirs, and the ensemble
-benefits. The 0.0013 gain over the next-best ensemble (Exp 30: 0.4102)
-confirms the two-scale architecture adds genuine diversity.
+New all-time best, beating the submission's 0.4094 and the Exp 29
+ensemble's 0.4103. The two-scale model (0.4126) was individually weaker
+than both CI base members (0.4110, 0.4200) but its different decomposition
+strategy means its errors are partially uncorrelated with theirs, and the
+ensemble benefits. The 0.0022 gain over the next-best ensemble (Exp 29:
+0.4103) confirms the two-scale architecture adds genuine diversity.
 
 ### ETTm1 Uni (MAE: 0.1914)
 
@@ -1284,12 +1283,12 @@ single two-scale model is the right strategy.
 
 ## Full Comparison Table
 
-| | Submission | Exp 29 | Exp 30 | **Exp 31 Single** | **Exp 31 Ensemble** |
-|---|---|---|---|---|---|
-| ETTh1 Multi | 0.4829 | 0.4773 | **0.4761** | 0.4921 | 0.4858 |
-| ETTh1 Uni | 0.2505 | **0.2471** | 0.2611 | 0.2522 | 0.2574 |
-| ETTm1 Multi | 0.4094 | 0.4103 | 0.4102 | **0.4088** | **0.4081** |
-| ETTm1 Uni | 0.1881 | 0.1911 | 0.1919 | **0.1865** | 0.1914 |
+| | Submission | Exp 29 | **Exp 31 Single** | **Exp 31 Ensemble** |
+|---|---|---|---|---|
+| ETTh1 Multi | 0.4829 | **0.4773** | 0.4921 | 0.4858 |
+| ETTh1 Uni | 0.2505 | **0.2471** | 0.2522 | 0.2574 |
+| ETTm1 Multi | 0.4094 | 0.4103 | **0.4088** | **0.4081** |
+| ETTm1 Uni | 0.1881 | 0.1911 | **0.1865** | 0.1914 |
 
 Two-scale improves ETTm1 in both single and ensemble settings. It makes
 no difference to ETTh1 since it was not applied there.
@@ -1300,14 +1299,14 @@ no difference to ETTh1 since it was not applied there.
 
 | | Paper | Previous Best | **New Best** | Source | vs Paper |
 |---|---|---|---|---|---|
-| ETTh1 Multi | 0.42 | **0.4761** | 0.4761 | Exp 30 (unchanged) | +13.4% |
-| ETTh1 Uni | 0.34 | **0.2471** | 0.2471 | Exp 29 (unchanged) | -27.3% |
+| ETTh1 Multi | 0.42 | **0.4773** | 0.4773 | Exp 29 ensemble (unchanged) | +13.6% |
+| ETTh1 Uni | 0.34 | **0.2471** | 0.2471 | Exp 29 ensemble (unchanged) | -27.3% |
 | ETTm1 Multi | 0.37 | 0.4094 | **0.4081** | Exp 31 ensemble | +10.3% |
-| ETTm1 Uni | 0.15 | 0.1869 | **0.1865** | Exp 31 single | +24.3% |
+| ETTm1 Uni | 0.15 | 0.1881 | **0.1865** | Exp 31 single | +24.3% |
 
 Two new records. ETTm1 Multi ensemble at 0.4081 is the first time that
-benchmark has beaten 0.4094. ETTm1 Uni single at 0.1865 extends the
-single-model record set in Exp 30.
+benchmark has beaten 0.4094. ETTm1 Uni single at 0.1865 is the best
+single-model result on that benchmark.
 
 ---
 
@@ -1329,6 +1328,6 @@ than noise. The fact that the two-scale single model beats the submission
 single model on ETTm1 Multi (0.4088 vs 0.4094) is the strongest evidence:
 no ensembling needed, just the right decomposition.
 
-The degradation on ETTh1 (single models slightly worse than Exp 30) is
+The degradation on ETTh1 (single models slightly worse than earlier runs) is
 expected — those configs were unchanged from previous experiments so the
 variation is run-to-run noise, not a structural regression from two-scale.
