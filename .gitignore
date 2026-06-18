@@ -67,6 +67,9 @@ Thumbs.db
 *.temp
 *.log
 
+# Redundant archived snapshot (duplicate of final-final-form/)
+archive/final-final-form.zip
+
 # Analysis outputs (regenerate as needed)
 analysis/notebooks/.ipynb_checkpoints/
 results/
